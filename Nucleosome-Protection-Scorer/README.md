@@ -1,10 +1,10 @@
 ## Table of Contents
 
-- [NWPS with Nucleosome Peak Calling and Cut&Run Nucleosome Peak Clustering](#nwps-with-nucleosome-peak-calling-and-cutrun-peak-clustering)
+- [NPS with Nucleosome Peak Calling and Cut&Run Nucleosome Peak Clustering](#NPS-with-nucleosome-peak-calling-and-cutrun-peak-clustering)
 - [Requirements](#requirements)
-- [NWPS: Nucleosome Weighted Protection Score](#nwps-nucleosome-weighted-protection-score)
+- [NPS: Nucleosome Probability Score](#NPS-nucleosome-probability-score)
   - [Key Concepts](#key-concepts)
-- [`nwps_with_nucleosome_peak_calling.py`](#nwps_with_nucleosome_peak_callingpy)
+- [`NPS_with_nucleosome_peak_calling.py`](#NPS_with_nucleosome_peak_callingpy)
   1. [Running on Individual Contigs](#1-running-on-individual-contigs)
   2. [Output Files](#2-output-files)
      - [Combined Scores (bedGraph) File Format](#a-combined-scores-bedgraph-file-format)
@@ -24,7 +24,7 @@
   4. [Example Output of Cluster Details](#4-example-output-of-cluster-details)
   5. [Example: Running the Peak Clusterer](#5-example-running-the-peak-clusterer)
 - [How to Use](#how-to-use)
-  1. [Running `nwps_with_nucleosome_peak_calling.py` on Individual Contigs](#1-running-nwps_with_nucleosome_peak_callingpy-on-individual-contigs)
+  1. [Running `NPS_with_nucleosome_peak_calling.py` on Individual Contigs](#1-running-NPS_with_nucleosome_peak_callingpy-on-individual-contigs)
   2. [Concatenating BedGraph Files](#2-concatenating-bedgraph-files)
   3. [Converting BedGraph to BigWig](#3-converting-bedgraph-to-bigwig)
   4. [Converting Nucleosome Regions to NarrowPeak Format](#4-converting-nucleosome-regions-to-narrowpeak-format)
@@ -35,18 +35,18 @@
 - [Setting up the Conda/Mamba Environment](#setting-up-the-condamamba-environment)
   1. [Installing Conda](#1-installing-conda)
   2. [Installing Mamba via Conda](#2-installing-mamba-via-conda)
-  3. [Creating the `nwps` Environment](#3-creating-the-nwps-environment)
-  4. [Activating the `nwps` Environment](#4-activating-the-nwps-environment)
+  3. [Creating the `NPS` Environment](#3-creating-the-NPS-environment)
+  4. [Activating the `NPS` Environment](#4-activating-the-NPS-environment)
   5. [Verify Installation](#5-verify-installation)
   6. [Deactivating the Environment](#6-deactivating-the-environment)
 
 ---
 
-# NWPS with Nucleosome Peak Calling and Cut&Run Nucleosome Peak Clustering
+# NPS with Nucleosome Peak Calling and Cut&Run Nucleosome Peak Clustering
 
 This repository provides tools for calling nucleosome peaks from BAM files using nucleosome positioning analysis, and for clustering and filtering those peaks based on control datasets. The workflow consists of two main scripts: 
 
-1. `nwps_with_nucleosome_peak_calling.py`: Calculates Nucleosome Weighted Protection Score (NWPS) and identifies nucleosome peak regions.
+1. `NPS_with_nucleosome_peak_calling.py`: Calculates Nucleosome Probability Score (NPS) and identifies nucleosome peak regions.
 2. `CutNRun_peak_clusterer.py`: Classifies and filters nucleosome peaks based on prominence scores, clusters peaks, and filters treatment peaks based on overlap with control clusters.
 
 ## Requirements
@@ -57,9 +57,9 @@ This repository provides tools for calling nucleosome peaks from BAM files using
 
 ---
 
-## NWPS: Nucleosome Weighted Protection Score
+## NPS: Nucleosome Probability Score
 
-The Nucleosome Weighted Protection Score (NWPS) measures the degree of confidence in nucleosome positioning based on the length and distribution of paired-end DNA fragments. Each fragment is assigned a probability distribution based on the mode fragment length of the sample.
+The Nucleosome Probability Score (NPS) measures the degree of confidence in nucleosome positioning based on the length and distribution of paired-end DNA fragments. Each fragment is assigned a probability distribution based on the mode fragment length of the sample.
 
 ### Key Concepts:
 
@@ -68,14 +68,14 @@ The Nucleosome Weighted Protection Score (NWPS) measures the degree of confidenc
 
 ---
 
-## `nwps_with_nucleosome_peak_calling.py`
+## `NPS_with_nucleosome_peak_calling.py`
 
 ### 1. Running on Individual Contigs
 
 To analyze individual contigs, use the following command:
 
 ```bash
-python3 nwps_with_nucleosome_peak_calling.py -b ./sorted_BAMs/<mark>_3000_sort.bam -c <chromosome> --mode-length <int> --frag-lower <int> --frag-upper <int>
+python3 NPS_with_nucleosome_peak_calling.py -b ./sorted_BAMs/<mark>_3000_sort.bam -c <chromosome> --mode-length <int> --frag-lower <int> --frag-upper <int>
 ```
 
 ### 2. Output Files
@@ -89,8 +89,8 @@ This file contains the scores for each contig and is formatted as follows:
   2. `start` (e.g., `1000`)
   3. `end` (e.g., `1100`)
   4. `coverage` (e.g., `50`)
-  5. `nwps_smoothed` (e.g., `0.75`)
-  6. `nwps` (e.g., `0.8`)
+  5. `NPS_smoothed` (e.g., `0.75`)
+  6. `NPS` (e.g., `0.8`)
 
 #### b. Nucleosome Regions (`bed`) File Format
 
@@ -114,7 +114,7 @@ This file contains nucleosome regions identified in the analysis. The format inc
 After running the script, concatenate bedGraph files or convert them to BigWig format as described in later a section.
 
 ---
-![NWPS Demonstration](NWPS_demonstration.png)
+![NPS Demonstration](NPS_demonstration.png)
 ---
 
 ## `CutNRun_peak_clusterer.py`
@@ -185,46 +185,46 @@ Running scripts from home directory
 - working directory: ~/CutNRun_Nucleosomes/H3K4me3_3000
 - bam directory: ~/CutNRun_Nucleosomes/sorted_BAMs
 
-### 1. Running `nwps_with_nucleosome_peak_calling.py` on Individual Contigs
+### 1. Running `NPS_with_nucleosome_peak_calling.py` on Individual Contigs
 
 To analyze individual contigs, run the following command:
 
 ```bash
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/<mark>_3000_sort.bam -c <chromosome> --mode-length <int> --frag-lower <int> --frag-upper <int>
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/<mark>_3000_sort.bam -c <chromosome> --mode-length <int> --frag-lower <int> --frag-upper <int>
 ```
 
 #### Running on Treatment Mark (H3K4me3)
 
 ```bash
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c I --mode-length 156 --frag-lower 126 --frag-upper 186 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c II --mode-length 156 --frag-lower 126 --frag-upper 186 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c III --mode-length 156 --frag-lower 126 --frag-upper 186 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c IV --mode-length 156 --frag-lower 126 --frag-upper 186 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c V --mode-length 156 --frag-lower 126 --frag-upper 186 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c X --mode-length 156 --frag-lower 126 --frag-upper 186 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c I --mode-length 156 --frag-lower 126 --frag-upper 186 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c II --mode-length 156 --frag-lower 126 --frag-upper 186 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c III --mode-length 156 --frag-lower 126 --frag-upper 186 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c IV --mode-length 156 --frag-lower 126 --frag-upper 186 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c V --mode-length 156 --frag-lower 126 --frag-upper 186 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3K4me3_3000_sort.bam -c X --mode-length 156 --frag-lower 126 --frag-upper 186 &
 ```
 
 #### Running on Control Mark (H3)
 
 ```bash
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c I --mode-length 156 --frag-lower 126 --frag-upper 416 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c II --mode-length 156 --frag-lower 126 --frag-upper 416 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c III --mode-length 156 --frag-lower 126 --frag-upper 416 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c IV --mode-length 156 --frag-lower 126 --frag-upper 416 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c V --mode-length 156 --frag-lower 126 --frag-upper 416 &
-python3 ~/nwps_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c X --mode-length 156 --frag-lower 126 --frag-upper 416 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c I --mode-length 156 --frag-lower 126 --frag-upper 416 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c II --mode-length 156 --frag-lower 126 --frag-upper 416 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c III --mode-length 156 --frag-lower 126 --frag-upper 416 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c IV --mode-length 156 --frag-lower 126 --frag-upper 416 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c V --mode-length 156 --frag-lower 126 --frag-upper 416 &
+python3 ~/NPS_with_nucleosome_peak_calling.py -b ../sorted_BAMs/H3_3000_sort.bam -c X --mode-length 156 --frag-lower 126 --frag-upper 416 &
 ```
 
 ### 2. Concatenating BedGraph Files
 
-Once the individual contigs have been processed, concatenate the bedGraph files for both `coverage` and `nwps_smoothed` scores:
+Once the individual contigs have been processed, concatenate the bedGraph files for both `coverage` and `NPS_smoothed` scores:
 
 ```bash
 awk '{print $1, $2, $3, $4}' H3K4me3_3000_sort_*_mode156_lower126_upper186.combined_scores.bedGraph > H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.coverage.bedGraph &
-awk '{print $1, $2, $3, $5}' H3K4me3_3000_sort_*_mode156_lower126_upper186.combined_scores.bedGraph > H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.nwps_smoothed.bedGraph &
+awk '{print $1, $2, $3, $5}' H3K4me3_3000_sort_*_mode156_lower126_upper186.combined_scores.bedGraph > H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.NPS_smoothed.bedGraph &
 
 awk '{print $1, $2, $3, $4}' H3_3000_sort_*_mode156_lower126_upper416.combined_scores.bedGraph > H3_3000_sort_whole_genome_mode156_lower126_upper416.coverage.bedGraph &
-awk '{print $1, $2, $3, $5}' H3_3000_sort_*_mode156_lower126_upper416.combined_scores.bedGraph > H3_3000_sort_whole_genome_mode156_lower126_upper416.nwps_smoothed.bedGraph &
+awk '{print $1, $2, $3, $5}' H3_3000_sort_*_mode156_lower126_upper416.combined_scores.bedGraph > H3_3000_sort_whole_genome_mode156_lower126_upper416.NPS_smoothed.bedGraph &
 ```
 
 ### 3. Converting BedGraph to BigWig
@@ -239,10 +239,10 @@ Then convert bedGraph files to BigWig:
 
 ```bash
 bedGraphToBigWig H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.coverage.bedGraph chrom.sizes H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.coverage.bw &
-bedGraphToBigWig H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.nwps_smoothed.bedGraph chrom.sizes H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.nwps_smoothed.bw &
+bedGraphToBigWig H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.NPS_smoothed.bedGraph chrom.sizes H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.NPS_smoothed.bw &
 
 bedGraphToBigWig H3_3000_sort_whole_genome_mode156_lower126_upper416.coverage.bedGraph chrom.sizes H3_3000_sort_whole_genome_mode156_lower126_upper416.coverage.bw &
-bedGraphToBigWig H3_3000_sort_whole_genome_mode156_lower126_upper416.nwps_smoothed.bedGraph chrom.sizes H3_3000_sort_whole_genome_mode156_lower126_upper416.nwps_smoothed.bw &
+bedGraphToBigWig H3_3000_sort_whole_genome_mode156_lower126_upper416.NPS_smoothed.bedGraph chrom.sizes H3_3000_sort_whole_genome_mode156_lower126_upper416.NPS_smoothed.bw &
 ```
 
 ### 4. Converting Nucleosome Regions to NarrowPeak Format
@@ -294,7 +294,7 @@ To visualize your results in genome browsers like IGV:
 
 ```bash
 H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.coverage.bw
-H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.nwps_smoothed.bw
+H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186.NPS_smoothed.bw
 H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186_nucleosome_regions.narrowPeak
 H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186_nucleosome_regions_control_cluster_peaks_1.0SD_threshold.narrowPeak
 H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186_nucleosome_regions_control_clusters_1.0SD_threshold.narrowPeak
@@ -303,7 +303,7 @@ H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186_nucleosome_regions_filt
 H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186_nucleosome_regions_treatment_cluster_peaks_1.0SD_threshold.narrowPeak
 H3K4me3_3000_sort_whole_genome_mode156_lower126_upper186_nucleosome_regions_treatment_clusters_1.0SD_threshold.narrowPeak
 H3_3000_sort_whole_genome_mode156_lower126_upper416.coverage.bw
-H3_3000_sort_whole_genome_mode156_lower126_upper416.nwps_smoothed.bw
+H3_3000_sort_whole_genome_mode156_lower126_upper416.NPS_smoothed.bw
 H3_3000_sort_whole_genome_mode156_lower126_upper416_nucleosome_regions.narrowPeak
 ```
 
@@ -341,27 +341,27 @@ Install Mamba using the following Conda command:
 conda install mamba -n base -c conda-forge
 ```
 
-### 3. Creating the `nwps` Environment
+### 3. Creating the `NPS` Environment
 
-Once Mamba is installed, you can create a new environment using the `nwps_with_dependencies.yaml` file, which contains all the necessary dependencies for this project.
+Once Mamba is installed, you can create a new environment using the `NPS_with_dependencies.yaml` file, which contains all the necessary dependencies for this project.
 
 ```bash
-# Create the nwps environment from the YAML file
-mamba env create -f nwps_with_dependencies.yaml
+# Create the NPS environment from the YAML file
+mamba env create -f NPS_with_dependencies.yaml
 ```
 
-### 4. Activating the `nwps` Environment
+### 4. Activating the `NPS` Environment
 
 After creating the environment, activate it with the following command:
 
 ```bash
-# Activate the nwps environment
-conda activate nwps
+# Activate the NPS environment
+conda activate NPS
 ```
 
 ### 5. Verify Installation
 
-To verify that all dependencies are installed correctly, you can list all the installed packages in the `nwps` environment:
+To verify that all dependencies are installed correctly, you can list all the installed packages in the `NPS` environment:
 
 ```bash
 conda list
