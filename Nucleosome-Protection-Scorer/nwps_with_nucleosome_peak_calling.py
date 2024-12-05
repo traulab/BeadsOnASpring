@@ -516,7 +516,13 @@ def main():
             args.out_prefix = f"{os.path.splitext(os.path.basename(args.bedgraph))[0]}_peaks"
         elif args.bamfiles:
             bam_basenames = [os.path.splitext(os.path.basename(bam))[0] for bam in args.bamfiles]
-            args.out_prefix = f"{'_'.join(bam_basenames)}_peaks"
+            args.out_prefix = f"{'_'.join(bam_basenames)}"
+            
+            # Check if contigs are specified and if there's exactly one contig
+            if args.contigs and len(args.contigs) == 1:
+                single_contig = args.contigs[0]
+                # Add the single contig to the output prefix
+                args.out_prefix = f"{args.out_prefix}_{single_contig}"
 
     # If --bedgraph is specified, load scores from the bedGraph and call peaks
     if args.bedgraph:
