@@ -93,10 +93,20 @@ This file contains the scores for each contig and is formatted as follows:
   6. `NPS` (e.g., `0.8`)
   7. `Dyad count` (e.g., `11`)
 
-```bash
-To convert to a bedGraph with a single NPS score pert base:
 
+To convert to a bedGraph with a single NPS score per base:
+```bash
 zcat combined_scores.bedGraph | awk 'BEGIN { OFS = "\t" } { print $1, $2, $3, $6 }' > NPS.bedGraph
+```
+
+To convert to bigWig:
+```bash
+bedGraphToBigWig NPS.bedGraph chrom.sizes NPS.bw
+```
+
+chrom.sizes file can be generated from the BAM used to generate the scores bedGraph, or using the bedGraph as below:
+```bash
+awk '{if ($2+0 > max[$1]) max[$1] = $3} END {for (c in max) print c, max[c]}' NPS.bedGraph > chrom.sizes
 ```
 
 #### b. Nucleosome Regions (`bed-like`) File Format
