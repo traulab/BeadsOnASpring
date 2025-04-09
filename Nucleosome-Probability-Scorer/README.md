@@ -87,10 +87,10 @@ This file contains the scores for each contig and is formatted as follows:
 - **Columns**:
   1. `chrom` (e.g., `chr1`)
   2. `start` (e.g., `1000`)
-  3. `end` (e.g., `1100`)
+  3. `end` (e.g., `1001`)
   4. `coverage` (e.g., `50`)
-  5. `NPS_smoothed` (e.g., `0.75`)
-  6. `NPS` (e.g., `0.8`)
+  5. `NPS_smoothed` (e.g., `3.75`)
+  6. `NPS` (e.g., `3.8`)
   7. `Dyad count` (e.g., `11`)
 
 
