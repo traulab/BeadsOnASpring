@@ -11,13 +11,19 @@ import random
 import gzip
 from bisect import bisect_left, bisect_right
 
-def generate_paired_reads(bamfile, contig=None, start=None, end=None, max_duplicates=1, subsample=None):
+def generate_paired_reads(bamfile, contig=None, start=None, end=None, max_duplicates=50, subsample=None):
     """Generator taking paired-end data from a sam/bam file and yielding both pairs as (fwd, rev),
        allowing a certain number of duplicate fragments and applying optional subsampling."""
     _unpaired_reads = dict()
     fragment_counts = defaultdict(int)
     read_count = 0
     subsample_removed_count = 0
+    try:
+        read_total = sum(1 for _ in bamfile.fetch(contig, start, end, multiple_iterators=True))
+    except:
+        return
+        
+    duplicates_per_100k = read_total/100000 * max_duplicates
 
     for read in bamfile.fetch(contig, start, end, multiple_iterators=True):
 
@@ -48,7 +54,7 @@ def generate_paired_reads(bamfile, contig=None, start=None, end=None, max_duplic
                         max(read.reference_end, mate.reference_end))
 
         # Track duplicate counts for this fragment
-        if fragment_counts[fragment_key] >= max_duplicates:
+        if fragment_counts[fragment_key] >= duplicates_per_100k:
             continue
 
         fragment_counts[fragment_key] += 1
@@ -100,14 +106,14 @@ def normalize_scores(scores, window_size):
             
     return smoothed_scores
 
-def precompute_distributions(nwps_frag_range, mode_DNA_length):
+def precompute_distributions(nps_frag_range, mode_DNA_length):
     """
     Precompute fragment score distributions for each fragment length in the range
     and store them in a dictionary.
     """
     distributions = {}
     
-    for fragment_length in nwps_frag_range:
+    for fragment_length in nps_frag_range:
         # Create the distribution for the current fragment length
         if fragment_length < mode_DNA_length:
             total_length = mode_DNA_length + (mode_DNA_length - fragment_length)
@@ -141,16 +147,19 @@ def precompute_distributions(nwps_frag_range, mode_DNA_length):
 
     return distributions
 
-def score_contig(bamfiles, contig, start, end, mode_DNA_length, nwps_frag_range, max_duplicates, distributions, subsample):
+def score_contig(bamfiles, contig, start, end, mode_DNA_length, nps_frag_range, max_duplicates, distributions, subsample):
     """
     Applies a range of scoring algorithms to a given reference contig, returning the results.
     Also returns fragment start positions and lengths for further plotting.
     """
     ref_len = end - start
     coverage = np.zeros(ref_len, dtype=int)
-    nwps = np.zeros(ref_len, dtype=float)
+    dyad = np.zeros(ref_len, dtype=int)
+    nps = np.zeros(ref_len, dtype=float)
     fragment_starts = []
     fragment_lengths = []
+    filter_frag_count = 0
+    total_frag_count = 0
 
     for bamfile in bamfiles:
         for frag_start, frag_end in generate_fragment_ranges(bamfile, contig, start, end, max_duplicates, subsample):
@@ -158,11 +167,12 @@ def score_contig(bamfiles, contig, start, end, mode_DNA_length, nwps_frag_range,
             frag_length = frag_end - frag_start
             fragment_starts.append(frag_start)  # Collect the fragment start position
             fragment_lengths.append(frag_length)  # Collect the fragment length
+            total_frag_count += 1
 
             # Retrieve precomputed fragment_scores from the dictionary
             fragment_scores = distributions.get(frag_length)
 
-            if frag_length in nwps_frag_range and fragment_scores:
+            if frag_length in nps_frag_range and fragment_scores:
                 if frag_length < mode_DNA_length:
                     total_length = mode_DNA_length + (mode_DNA_length - frag_length)
                     fragment_center = frag_start + (frag_length // 2) - start
@@ -179,28 +189,38 @@ def score_contig(bamfiles, contig, start, end, mode_DNA_length, nwps_frag_range,
                     fragment_scores = fragment_scores[:ref_len - start_pos]
 
                 if 0 <= start_pos < ref_len:
-                    nwps[start_pos:start_pos + len(fragment_scores)] += fragment_scores[:end_pos - start_pos]
+                    nps[start_pos:start_pos + len(fragment_scores)] += fragment_scores[:end_pos - start_pos]
 
             # Calculate coverage
             if frag_start >= start and frag_end <= end:
-                if frag_length in nwps_frag_range:
+                if frag_length in nps_frag_range:
                     coverage[frag_start - start:frag_end - start] += 1
+                    filter_frag_count += 1
+
+                    # Add +1 to the center position of the fragment for dyad scoring
+                    fragment_center = frag_start + (frag_length // 2) - start
+                    if 0 <= fragment_center < ref_len:
+                        dyad[fragment_center] += 1
+
+    # print(filter_frag_count)
+    # print(total_frag_count)
 
     # Apply Savitzky-Golay filter
     window_size = 21  # should be odd, larger than polyorder, and appropriate to your data size
     polyorder = 2
-    nwps_smoothed = savgol_filter(nwps, window_size, polyorder)
+    nps_smoothed = savgol_filter(nps, window_size, polyorder)
 
     # Return scores as tuples in the format (contig, start, score_array)
     scores = {
         'coverage': [(contig, start, coverage)],
-        'nwps_smoothed': [(contig, start, nwps_smoothed)],
-        'nwps': [(contig, start, nwps)],
+        'nps_smoothed': [(contig, start, nps_smoothed)],
+        'nps': [(contig, start, nps)],
+        'dyad': [(contig, start, dyad)],
     }
 
-    return scores, fragment_starts, fragment_lengths, nwps_frag_range
+    return scores, fragment_starts, fragment_lengths, nps_frag_range
 
-def find_peaks_and_regions(scores, original_start, original_end, min_length=42, max_neg_run=10):
+def find_peaks_and_regions(scores, original_start, original_end, min_length=50, max_neg_run=5):
     positive_regions = []
     current_region = None
     searching_for_positive = True  # Start by looking for positive regions
@@ -280,7 +300,7 @@ def find_peaks_and_regions(scores, original_start, original_end, min_length=42, 
         (adjusted_positive_peaks, positive_peak_regions),
     )
 
-def write_bedgraph(scores, peaks, contigs, out_prefix, nwps_frag_range, first_region=False):
+def write_bedgraph(scores, peaks, contigs, out_prefix, nps_frag_range, first_region=False):
     mode = 'w' if first_region else 'a'  # Overwrite for the first region, append for subsequent regions
 
     # Unpack the original start and end from the contigs tuple
@@ -328,7 +348,7 @@ def write_bedgraph(scores, peaks, contigs, out_prefix, nwps_frag_range, first_re
                     # Write the final line to the file, including all score types
                     f.write("\t".join(line) + "\n")
 
-def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nwps_frag_range, bedgraph, first_region=False):
+def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nps_frag_range, bedgraph, first_region=False):
     # Set the mode for writing files: 'w' for the first region (overwrite), 'a' for subsequent regions (append)
     mode = 'w' if first_region else 'a'
 
@@ -337,7 +357,7 @@ def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nwps_frag_range
 
     # Write the scores to the combined bedGraph
     if not bedgraph:
-        write_bedgraph(scores, peaks, contigs, out_prefix, nwps_frag_range, first_region)
+        write_bedgraph(scores, peaks, contigs, out_prefix, nps_frag_range, first_region)
 
     # Write nucleosome regions directly to a file
     nucleosome_filename = f"{out_prefix}_nucleosome_regions.bed"
@@ -345,7 +365,7 @@ def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nwps_frag_range
         for (contig, original_start), peak_data in peaks.items():
             # Add "chr" prefix if not present
             if not contig.startswith("chr"):
-               contig = f"chr{contig}"
+                contig = f"chr{contig}"
 
             num_positive_peaks = len(peak_data['adjusted_peaks'])
             num_negative_peaks = len(peak_data['negative_peaks'])
@@ -394,12 +414,18 @@ def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nwps_frag_range
                 average_flanking_score = np.mean([upstream_score, downstream_score])
                 prominence_score = peak_data['positive_peak_scores'][i] - average_flanking_score
 
+                # Retrieve max coverage and position for the current peak
+                max_coverage = peak_data['max_coverages'][i]
+                max_position = peak_data['max_positions'][i]
+
                 # Write to the output file in the required format
                 f.write(f"{contig}\t{nucleosome_region_start}\t{nucleosome_region_end}\t"
                         f"{prominence_score:.2f}\t{adjusted_peak}\t"
                         f"{upstream_score:.2f}\t{upstream_negative_peak}\t"
                         f"{downstream_score:.2f}\t{downstream_negative_peak}\t"
-                        f"{peak_data['positive_peak_scores'][i]:.2f}\t{peak}\n")
+                        f"{peak_data['positive_peak_scores'][i]:.2f}\t{peak}\t"
+                        f"{max_coverage}\t{max_position}\n")
+
 
 def split_into_regions(contig, start, end, max_length=100000, overlap=1000):
     regions = []
@@ -414,33 +440,32 @@ def split_into_regions(contig, start, end, max_length=100000, overlap=1000):
     return regions
 
 def load_bedgraph_for_peak_calling(bedgraph_file):
-    """Loads nwps_smoothed scores from a bedGraph file (supports .gz) into a structure for peak calling, with tqdm progress bar."""
-    
+    """Loads nps_smoothed scores and coverage from a bedGraph file (supports .gz) into a structure for peak calling, with tqdm progress bar."""
     scores = []
     current_chrom = None
-    current_scores = []
+    current_nps_smoothed = []
+    current_coverage = []
     
     # Get the total size of the file for tqdm progress bar
     file_size = os.path.getsize(bedgraph_file)
-
     if bedgraph_file.endswith(".gz"):
-       file_size = file_size * 3.5 
+       file_size = file_size * 3.5
 
     # Open the file, supporting both .bedGraph and .bedGraph.gz
     open_func = gzip.open if bedgraph_file.endswith(".gz") else open
     with open_func(bedgraph_file, 'rt') as f:
         with tqdm(total=file_size, unit='B', unit_scale=True, desc='Loading bedGraph') as pbar:
             for line in f:
-                # Update the progress bar based on how many bytes have been read
                 pbar.update(len(line.encode('utf-8')))  # Update based on bytes read
 
                 if line.startswith('track') or line.startswith('#'):
                     continue  # Skip headers or track lines
 
-                chrom, start, end, coverage, nwps_smoothed, nwps = line.strip().split()
+                chrom, start, end, coverage, nps_smoothed, nps = line.strip().split()
                 start = int(start)
                 end = int(end)
-                nwps_smoothed = float(nwps_smoothed)
+                nps_smoothed = float(nps_smoothed)
+                coverage = int(coverage)
 
                 # If we encounter a new chromosome, store the previous one's scores
                 if current_chrom is None:
@@ -448,27 +473,50 @@ def load_bedgraph_for_peak_calling(bedgraph_file):
 
                 if chrom != current_chrom:
                     # Save the data for the previous chromosome
-                    scores.append((current_chrom, current_scores))
+                    scores.append((current_chrom, current_nps_smoothed, current_coverage))
                     # Reset for the new chromosome
                     current_chrom = chrom
-                    current_scores = []
+                    current_nps_smoothed = []
+                    current_coverage = []
 
-                # Append the nwps_smoothed score to the list
-                current_scores.append(nwps_smoothed)
+                # Append the scores to the respective lists
+                current_nps_smoothed.append(nps_smoothed)
+                current_coverage.append(coverage)
 
             # Save the last chromosome's data
-            if current_chrom is not None and current_scores:
-                scores.append((current_chrom, current_scores))
+            if current_chrom is not None and current_nps_smoothed:
+                scores.append((current_chrom, current_nps_smoothed, current_coverage))
 
     return scores
 
-def process_contig(contig, nwps_smoothed_scores, original_start, original_end, mode_length, out_prefix, first_region, bedgraph):
+
+def process_contig(contig, nps_smoothed_scores, coverage_scores, original_start, original_end, mode_length, out_prefix, first_region, bedgraph):
     """Shared function for peak calling and writing bedGraph/peak data."""
     
     # Call peaks using the existing peak calling function
     positive_peaks, negative_peaks, adjusted_peaks = find_peaks_and_regions(
-        nwps_smoothed_scores, 0, len(nwps_smoothed_scores), mode_length // 3, mode_length // 16
+        nps_smoothed_scores, 0, len(nps_smoothed_scores), 50, 5
     )
+
+    # Initialize lists for maximum coverage and positions within peak regions
+    max_coverages = []
+    max_positions = []
+
+    # Calculate maximum coverage and position for each peak region
+    for start, end in adjusted_peaks[1]:  # `adjusted_peaks[1]` contains the list of peak regions as (start, end) tuples
+        peak_region_start = start - original_start
+        peak_region_end = end - original_start
+
+        # Extract the coverage values for the current peak region
+        region_coverage = coverage_scores[peak_region_start:peak_region_end]
+
+        # Find the maximum coverage and its position within the region
+        max_coverage = np.max(region_coverage)
+        max_position = np.argmax(region_coverage) + peak_region_start + original_start
+
+        # Append results to the lists
+        max_coverages.append(max_coverage)
+        max_positions.append(max_position)
 
     # Structure peaks data as a dictionary
     peaks = {
@@ -479,12 +527,14 @@ def process_contig(contig, nwps_smoothed_scores, original_start, original_end, m
             'negative_peak_scores': negative_peaks[1],
             'adjusted_peaks': adjusted_peaks[0],
             'nucleosome_regions': adjusted_peaks[1],
+            'max_coverages': max_coverages,
+            'max_positions': max_positions,
         }
     }
 
     # Write the peaks to output files
     write_bedgraph_and_peaks(
-        nwps_smoothed_scores,
+        nps_smoothed_scores,
         peaks,
         [(contig, original_start, original_end)],
         out_prefix,
@@ -503,8 +553,8 @@ def main():
     parser.add_argument('--mode-length', type=int, default=166, help='Mode fragment length (default: 166)')
     parser.add_argument('--frag-lower', type=int, default=126, help='Lower limit for fragment size (default: 126)')
     parser.add_argument('--frag-upper', type=int, default=186, help='Upper limit for fragment size (default: 186)')
-    parser.add_argument('--max-duplicates', type=int, default=2, help='Maximum allowed duplicates per fragment (default: 2)')
-    parser.add_argument('--no_plot', action='store_true', help='Disable plotting of nwps_smooth scores')
+    parser.add_argument('--max-duplicates', type=int, default=50, help='Maximum allowed duplicates per 100k fragments within 100k bases (default: 50)')
+    parser.add_argument('--no_plot', action='store_true', help='Disable plotting of nps_smooth scores')
     parser.add_argument('--subsample', type=float, default=None, help='Subsampling proportion (e.g., 0.5 to subsample 50% of the reads)')
     parser.add_argument('--bedgraph', help='bedGraph or bedGraph.gz file to call peaks from (instead of calculating new scores)')
 
@@ -524,18 +574,27 @@ def main():
                 # Add the single contig to the output prefix
                 args.out_prefix = f"{args.out_prefix}_{single_contig}"
 
+    args.out_prefix = f"{args.out_prefix}_mode{str(args.mode_length)}_lower{str(args.frag_lower)}_upper{str(args.frag_upper)}"
+
     # If --bedgraph is specified, load scores from the bedGraph and call peaks
     if args.bedgraph:
         print(f"Loading scores from bedGraph file: {args.bedgraph}")
         bedgraph_data = load_bedgraph_for_peak_calling(args.bedgraph)
 
-        # Iterate through the loaded bedGraph data and call peaks on nwps_smoothed scores
+        # Iterate through the loaded bedGraph data and call peaks on nps_smoothed scores
         first_region = True
-        for contig, nwps_smoothed_scores in bedgraph_data:
+        for contig, nps_smoothed_scores, coverage_scores in bedgraph_data:
             # Use the shared function to process each contig
             process_contig(
-                contig, nwps_smoothed_scores, 0, len(nwps_smoothed_scores), 
-                args.mode_length, args.out_prefix, first_region, args.bedgraph
+                contig,
+                nps_smoothed_scores,
+                coverage_scores,
+                0,
+                len(nps_smoothed_scores),
+                args.mode_length,
+                args.out_prefix,
+                first_region,
+                args.bedgraph,
             )
             first_region = False  # Only overwrite the file on the first iteration
 
@@ -556,7 +615,7 @@ def main():
             except Exception as e:
                 parser.error(f"Unable to open bamfile {bamfile_path}: {str(e)}")
                 return -1
-        
+
         # Split contigs based on specified ranges or all contigs
         contigs = []
         if args.contigs:
@@ -575,21 +634,40 @@ def main():
                 contigs.extend(split_into_regions(contig, start, end))
 
         # Precompute distributions for fragment lengths in the range
-        nwps_frag_range = range(args.frag_lower, args.frag_upper + 1)
-        distributions = precompute_distributions(nwps_frag_range, args.mode_length)
+        nps_frag_range = range(args.frag_lower, args.frag_upper + 1)
+        distributions = precompute_distributions(nps_frag_range, args.mode_length)
 
         first_region = True
         for contig, adjusted_start, adjusted_end, original_start, original_end in tqdm(contigs, desc='Scoring contigs'):
-            scores, fragment_starts, fragment_lengths, nwps_frag_range = score_contig(
-                bamfiles, contig, adjusted_start, adjusted_end, args.mode_length, nwps_frag_range, args.max_duplicates, distributions, args.subsample
+            # Score the contig to get nps and coverage arrays
+            scores, fragment_starts, fragment_lengths, nps_frag_range = score_contig(
+                bamfiles, contig, adjusted_start, adjusted_end, args.mode_length, nps_frag_range, args.max_duplicates, distributions, args.subsample
             )
             
-            nwps_smoothed_scores = scores['nwps_smoothed'][0][2]  # Extract the score array
+            # Extract nps smoothed scores and coverage
+            nps_smoothed_scores = scores['nps_smoothed'][0][2]
+            coverage_scores = scores['coverage'][0][2]
 
             # Get the peaks and positive peak regions while excluding overhang regions
-            positive_peaks, negative_peaks, adjusted_peaks = find_peaks_and_regions(nwps_smoothed_scores, adjusted_start, adjusted_end, args.mode_length//3, args.mode_length//16)
-            
-            # Structure peaks data as a dictionary
+            positive_peaks, negative_peaks, adjusted_peaks = find_peaks_and_regions(
+                nps_smoothed_scores, adjusted_start, adjusted_end, 50, 5
+            )
+
+            # Structure peaks data as a dictionary, including max coverage and position
+            max_coverages = []
+            max_positions = []
+            for start, end in adjusted_peaks[1]:
+                region_start = start - original_start
+                region_end = end - original_start
+                region_coverage = coverage_scores[region_start:region_end]
+
+                if region_coverage.size > 0:
+                    max_coverages.append(np.max(region_coverage))
+                    max_positions.append(np.argmax(region_coverage) + region_start + original_start)
+                else:
+                    max_coverages.append(0)
+                    max_positions.append(0)
+
             peaks = {
                 (contig, original_start): {
                     'positive_peaks': positive_peaks[0],
@@ -598,19 +676,22 @@ def main():
                     'negative_peak_scores': negative_peaks[1],
                     'adjusted_peaks': adjusted_peaks[0],
                     'nucleosome_regions': adjusted_peaks[1],
+                    'max_coverages': max_coverages,
+                    'max_positions': max_positions,
                 }
             }
 
+            # Write results to bedGraph and peak files
             write_bedgraph_and_peaks(
-                scores, 
-                peaks, 
-                [(contig, original_start, original_end)], 
-                args.out_prefix, 
-                nwps_frag_range, 
+                scores,
+                peaks,
+                [(contig, original_start, original_end)],
+                args.out_prefix,
+                nps_frag_range,
                 False,
-                first_region, 
+                first_region,
             )
-                    
+
             first_region = False  # Set to False after processing the first region
 
             # Cleanup to free memory
