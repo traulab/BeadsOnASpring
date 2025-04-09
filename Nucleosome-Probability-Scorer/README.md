@@ -91,8 +91,15 @@ This file contains the scores for each contig and is formatted as follows:
   4. `coverage` (e.g., `50`)
   5. `NPS_smoothed` (e.g., `0.75`)
   6. `NPS` (e.g., `0.8`)
+  7. `Dyad count` (e.g., `11`)
 
-#### b. Nucleosome Regions (`bed`) File Format
+```bash
+To convert to a bedGraph with a single NPS score pert base:
+
+zcat combined_scores.bedGraph | awk 'BEGIN { OFS = "\t" } { print $1, $2, $3, $6 }' > NPS.bedGraph
+```
+
+#### b. Nucleosome Regions (`bed-like`) File Format
 
 This file contains nucleosome regions identified in the analysis. The format includes:
 
@@ -108,6 +115,28 @@ This file contains nucleosome regions identified in the analysis. The format inc
   9. `downstream_negative_peak_pos`
   10. `positive_peak_score`
   11. `positive_peak_pos`
+
+To convert these nucleosome protection peak calls to standard BED format that can then be converted to a bigBed:
+
+```bash
+infile="nucleosome_regions.bed"
+outfile="${infile%.bed}_converted.bed"
+
+awk 'BEGIN { OFS="\t" }
+{
+    chr = $1
+    start = $2
+    end = $3
+    name = chr ":" (start + 1) "-" end
+    score = int($4 + 0.5)  # round manually
+    if (score > 1000) score = 1000
+    strand = "+"
+    center = $5
+    thickEnd = summit + 1
+
+    print chr, start, end, name, score, strand, center, thickEnd
+}' "$infile" > "$outfile"
+```
 
 ### 3. Post-processing
 
