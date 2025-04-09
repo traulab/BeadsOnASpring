@@ -126,6 +126,8 @@ This file contains nucleosome regions identified in the analysis. The format inc
   9. `downstream_negative_peak_pos`
   10. `positive_peak_score`
   11. `positive_peak_pos`
+  12. 'maximum_seq_coverage`
+  13. `maximum_seq_coverage_pos`
 
 To convert these nucleosome protection peak calls to standard BED format that can then be converted to a bigBed:
 
