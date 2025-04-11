@@ -61,6 +61,10 @@ This repository provides tools for calling nucleosome peaks from BAM files using
 
 The Nucleosome Probability Score (NPS) measures the degree of confidence in nucleosome positioning based on the length and distribution of paired-end DNA fragments. Each fragment is assigned a probability distribution based on the mode fragment length of the sample.
 
+---
+![NPS Example](IGV_NPS_example.png)
+---
+
 ### Key Concepts:
 
 1. **Mode Fragment Length**: This is the most frequent fragment length in the sample, representing the most probable size of a nucleosome-protected fragment. Mode-sized fragments have the highest confidence for determining nucleosome positioning.
