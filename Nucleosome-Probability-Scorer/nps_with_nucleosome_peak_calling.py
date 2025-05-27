@@ -216,14 +216,12 @@ def score_contig(bamfiles, contig, start, end, mode_DNA_length, nps_frag_range, 
         'dyad': [(contig, start, dyad)],
     }
 
-    return scores, fragment_starts, fragment_lengths, nps_frag_range
+    return scores, nps_frag_range
 
 def find_peaks_and_regions(scores, original_start, min_length=50, max_neg_run=5):
     positive_regions = []
     current_region = None
     searching_for_positive = True  # Start by looking for positive regions
-
-    # Initialize the tqdm progress bar for processing scores
 
     for i in range(len(scores)):
         score = scores[i]
@@ -299,14 +297,17 @@ def find_peaks_and_regions(scores, original_start, min_length=50, max_neg_run=5)
     )
 
 def write_bedgraph(scores, contigs, out_prefix, first_region=False):
+    # Set the mode for writing files: 'w' for the first region (overwrite), 'a' for subsequent regions (append)
+    mode = 'w' if first_region else 'a'
+
     # Unpack the original start and end from the contigs tuple
     original_start, original_end = contigs[0]
 
     # Initialize the bedGraph filename for combined scores
-    filename = f"{out_prefix}.combined_scores.bedGraph"
+    filename = f"{out_prefix}_combined_scores.bedGraph"
     
     # Prepare to write data
-    with open(filename, 'a') as f:
+    with open(filename, mode) as f:
         # Use the first score type to get the position data, assuming all score types have the same positions
         first_score_type = list(scores.keys())[0]
         contig_data = scores[first_score_type]
@@ -338,18 +339,15 @@ def write_bedgraph(scores, contigs, out_prefix, first_region=False):
                     # Write the final line to the file, including all score types
                     f.write("\t".join(line) + "\n")
 
-def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nps_frag_range, first_region=False):
+def write_nucleosome_peaks(peaks, contigs, out_prefix, first_region=False, flip_scores=False):
     # Set the mode for writing files: 'w' for the first region (overwrite), 'a' for subsequent regions (append)
     mode = 'w' if first_region else 'a'
 
     # Unpack the original start and end from the contigs tuple
     original_start, original_end = contigs[0]
 
-    # Write the scores to the combined bedGraph
-    write_bedgraph(scores, contigs, out_prefix, first_region)
-
     # Write nucleosome regions directly to a file
-    nucleosome_filename = f"{out_prefix}_nucleosome_regions.bed"
+    nucleosome_filename = f"{out_prefix}.bed"
     with open(nucleosome_filename, mode) as f:
         for (contig, original_start), peak_data in peaks.items():
             # Add "chr" prefix if not present
@@ -390,29 +388,37 @@ def write_bedgraph_and_peaks(scores, peaks, contigs, out_prefix, nps_frag_range,
                     upstream_score = peak_data['negative_peak_scores'][upstream_index]
                 else:
                     upstream_negative_peak = peak
-                    upstream_score = peak_data['positive_peak_scores'][i]  # Use the positive peak score if no upstream negative peak is found
+                    upstream_score = peak_data['positive_peak_scores'][i]
 
                 if downstream_index is not None:
                     downstream_negative_peak = peak_data['negative_peaks'][downstream_index]
                     downstream_score = peak_data['negative_peak_scores'][downstream_index]
                 else:
                     downstream_negative_peak = peak
-                    downstream_score = peak_data['positive_peak_scores'][i]  # Use the positive peak score if no downstream negative peak is found
+                    downstream_score = peak_data['positive_peak_scores'][i]
+
+                # Flip scores if requested
+                if flip_scores:
+                    upstream_score *= -1
+                    downstream_score *= -1
+                    peak_score = -1 * peak_data['positive_peak_scores'][i]
+                else:
+                    peak_score = peak_data['positive_peak_scores'][i]
 
                 # Use the strongest negative peak (most negative score) to calculate prominence
                 average_flanking_score = np.mean([upstream_score, downstream_score])
-                prominence_score = peak_data['positive_peak_scores'][i] - average_flanking_score
+                prominence_score = peak_score - average_flanking_score
 
                 # Retrieve max coverage and position for the current peak
                 max_coverage = peak_data['max_coverages'][i]
                 max_position = peak_data['max_positions'][i]
 
-                # Write to the output file in the required format
+                # Write to the output file
                 f.write(f"{contig}\t{nucleosome_region_start}\t{nucleosome_region_end}\t"
                         f"{prominence_score:.2f}\t{adjusted_peak}\t"
                         f"{upstream_score:.2f}\t{upstream_negative_peak}\t"
                         f"{downstream_score:.2f}\t{downstream_negative_peak}\t"
-                        f"{peak_data['positive_peak_scores'][i]:.2f}\t{peak}\t"
+                        f"{peak_score:.2f}\t{peak}\t"
                         f"{max_coverage}\t{max_position}\n")
 
 def split_into_regions(contig, start, end, max_length=100000, overlap=1000):
@@ -426,6 +432,62 @@ def split_into_regions(contig, start, end, max_length=100000, overlap=1000):
         regions.append((contig, adjusted_start, adjusted_end, original_start, original_end))
         current_start = original_end  # Move start forward considering the original end, not the overlap
     return regions
+
+def call_and_write_peaks(
+    scores,
+    coverage_scores,
+    adjusted_start,
+    original_start,
+    original_end,
+    contig,
+    out_prefix,
+    first_region,
+    peak_type_label,
+    flip_scores,
+):
+    """
+    Calls peaks on the given scores, calculates coverage-based features, and writes results to BED.
+    """
+    # Call peaks using the same detection logic
+    positive_peaks, negative_peaks, adjusted_peaks = find_peaks_and_regions(scores, adjusted_start, 50, 5)
+
+    # Compute peak coverage features
+    max_coverages = []
+    max_positions = []
+    for start, end in adjusted_peaks[1]:
+        region_start = start - original_start
+        region_end = end - original_start
+        region_coverage = coverage_scores[region_start:region_end]
+
+        if region_coverage.size > 0:
+            max_coverages.append(np.max(region_coverage))
+            max_positions.append(np.argmax(region_coverage) + region_start + original_start)
+        else:
+            max_coverages.append(0)
+            max_positions.append(0)
+
+    # Package peak data
+    peaks = {
+        (contig, original_start): {
+            'positive_peaks': positive_peaks[0],
+            'positive_peak_scores': positive_peaks[1],
+            'negative_peaks': negative_peaks[0],
+            'negative_peak_scores': negative_peaks[1],
+            'adjusted_peaks': adjusted_peaks[0],
+            'nucleosome_regions': adjusted_peaks[1],
+            'max_coverages': max_coverages,
+            'max_positions': max_positions,
+        }
+    }
+
+    # Write peaks to BED file
+    write_nucleosome_peaks(
+        peaks,
+        [(original_start, original_end)],
+        out_prefix + peak_type_label,
+        first_region,
+        flip_scores,
+    )
 
 def main():
     # Parse command line arguments
@@ -494,7 +556,7 @@ def main():
         first_region = True
         for contig, adjusted_start, adjusted_end, original_start, original_end in tqdm(contigs, desc='Scoring contigs'):
             # Score the contig to get nps and coverage arrays
-            scores, fragment_starts, fragment_lengths, nps_frag_range = score_contig(
+            scores, nps_frag_range = score_contig(
                 bamfiles, contig, adjusted_start, adjusted_end, args.mode_length, nps_frag_range, args.max_duplicates, distributions, args.subsample
             )
             
@@ -502,56 +564,38 @@ def main():
             nps_smoothed_scores = scores['nps_smoothed'][0][2]
             coverage_scores = scores['coverage'][0][2]
 
-            # Get the peaks and positive peak regions while excluding overhang regions
-            positive_peaks, negative_peaks, adjusted_peaks = find_peaks_and_regions(
-                nps_smoothed_scores, adjusted_start, 50, 5
+            call_and_write_peaks(
+                scores=nps_smoothed_scores,
+                coverage_scores=coverage_scores,
+                adjusted_start=adjusted_start,
+                original_start=original_start,
+                original_end=original_end,
+                contig=contig,
+                out_prefix=args.out_prefix,
+                first_region=first_region,
+                peak_type_label="_nucleosome_regions",
+                flip_scores=False,
             )
 
-            # Structure peaks data as a dictionary, including max coverage and position
-            max_coverages = []
-            max_positions = []
-            for start, end in adjusted_peaks[1]:
-                region_start = start - original_start
-                region_end = end - original_start
-                region_coverage = coverage_scores[region_start:region_end]
+            flipped_scores = -1 * nps_smoothed_scores
 
-                if region_coverage.size > 0:
-                    max_coverages.append(np.max(region_coverage))
-                    max_positions.append(np.argmax(region_coverage) + region_start + original_start)
-                else:
-                    max_coverages.append(0)
-                    max_positions.append(0)
-
-            peaks = {
-                (contig, original_start): {
-                    'positive_peaks': positive_peaks[0],
-                    'positive_peak_scores': positive_peaks[1],
-                    'negative_peaks': negative_peaks[0],
-                    'negative_peak_scores': negative_peaks[1],
-                    'adjusted_peaks': adjusted_peaks[0],
-                    'nucleosome_regions': adjusted_peaks[1],
-                    'max_coverages': max_coverages,
-                    'max_positions': max_positions,
-                }
-            }
-
-            # Write results to bedGraph and peak files
-            write_bedgraph_and_peaks(
-                scores,
-                peaks,
-                [(original_start, original_end)],
-                args.out_prefix,
-                nps_frag_range,
-                first_region,
+            call_and_write_peaks(
+                scores=flipped_scores,
+                coverage_scores=coverage_scores,
+                adjusted_start=adjusted_start,
+                original_start=original_start,
+                original_end=original_end,
+                contig=contig,
+                out_prefix=args.out_prefix,
+                first_region=first_region,
+                peak_type_label="_breakpoint_peaks",
+                flip_scores=True,
             )
+
+            # Write the scores to the combined bedGraph
+            write_bedgraph(scores, [(original_start, original_end)], args.out_prefix, first_region)
 
             first_region = False  # Set to False after processing the first region
-
-            # Cleanup to free memory
-            del peaks
-            del scores
-            del fragment_starts
-            del fragment_lengths
 
         return 0
 
