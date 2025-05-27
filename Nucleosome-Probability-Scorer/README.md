@@ -66,7 +66,7 @@ The Nucleosome Probability Score (NPS) measures the degree of confidence in nucl
 ### Key Concepts:
 
 1. **Mode Fragment Length**: This is the most frequent fragment length in the sample, representing the most probable size of a nucleosome-protected fragment. Mode-sized fragments have the highest confidence for determining nucleosome positioning.
-2. **Probability Distributions (Positons)**: Each fragment is assigned a probability distribution (called *pos-it-ons*) reflecting the confidence in nucleosome positioning. Mode-sized fragments have the greatest confidence of nucleosome positioning at the center (+1) and breakpoints at the start and end (-1). Non-mode fragments are given broader distributions to reflect reduced confidence.
+2. **Probability Distributions (Positons)**: Each fragment is assigned a probability distribution reflecting the confidence in nucleosome positioning. Mode-sized fragments have the greatest confidence of nucleosome positioning at the center (+1) and breakpoints at the start and end (-1). Non-mode fragments are given broader distributions to reflect reduced confidence.
 
 ---
 
