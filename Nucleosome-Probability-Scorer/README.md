@@ -142,14 +142,15 @@ awk 'BEGIN { OFS="\t" }
     chr = $1
     start = $2
     end = $3
-    name = chr ":" (start + 1) "-" end
-    score = int($4 + 0.5)  # round manually
+    name = chr ":" (start+1) "-" end
+    summit = $5
+    score = int($4 + 0.5)  # manual round
+    if (score < 0) score = -score
     if (score > 1000) score = 1000
     strand = "+"
-    center = $5
     thickEnd = summit + 1
 
-    print chr, start, end, name, score, strand, center, thickEnd
+    print chr, start, end, name, score, strand, summit, thickEnd
 }' "$infile" > "$outfile"
 ```
 
