@@ -42,7 +42,7 @@ The Probabilistic Nucleosome Score (PNS) measures the degree of confidence in nu
 ### Key Concepts:
 
 1. **Mode Fragment Length**: This is the most frequent fragment length in the sample, representing the most probable size of a nucleosome-protected fragment. Mode-sized fragments have the highest confidence for determining nucleosome positioning.
-2. **Probability Distributions (Positons)**: Each fragment is assigned a probability distribution reflecting the confidence in nucleosome positioning. Mode-sized fragments have the greatest confidence of nucleosome positioning at the center (+1) and breakpoints at the start and end (-1). Non-mode fragments are given broader distributions to reflect reduced confidence.
+2. **Dyad Likelihood Distributions**: Each fragment is assigned a dyad likelihood distribution reflecting the confidence in nucleosome positioning. Mode-sized fragments have the greatest confidence of nucleosome positioning at the center (+1) and breakpoints at the start and end (-1). Non-mode fragments are given broader distributions to reflect reduced confidence.
 
 ---
 
@@ -53,7 +53,7 @@ The Probabilistic Nucleosome Score (PNS) measures the degree of confidence in nu
 To analyze individual contigs, use the following command:
 
 ```bash
-python3 PNS_with_nucleosome_peak_calling.py -b ./sorted_BAMs/<mark>_3000_sort.bam -c <chromosome> --mode-length <int> --frag-lower <int> --frag-upper <int>
+python3 PNS_with_nucleosome_peak_calling.py -b <your_bam_file.bam> -c <chromosome> --mode-length <int> --frag-lower <int> --frag-upper <int>
 ```
 
 ### 2. Output Files
