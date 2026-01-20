@@ -1,4 +1,4 @@
-# Nucleosome Peak Distance Analyzer (Percentile/Target-Peaks Filtering)
+# interpeak_distance_counter.py
 
 This script computes **adjacent peak distance distributions** (50–1000 bp) from a BED-like peak file, optionally stratified by **chromatin state**, while supporting score thresholding by:
 
