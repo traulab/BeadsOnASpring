@@ -630,7 +630,7 @@ def main():
     parser.add_argument('--max-duplicates', type=int, default=1, help='Max allowed duplicate fragments with same coords')
     parser.add_argument('--no_plot', action='store_true', help='Disable plotting (currently unused)')
     parser.add_argument('--subsample', type=float, default=None,
-                        help='Subsampling proportion (e.g. 0.5 keeps ~50% of fragments)')
+        help='Subsampling proportion (e.g., 0.5 to subsample 50%% of the reads)')
 
     args = parser.parse_args()
 
