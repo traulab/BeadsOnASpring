@@ -6,8 +6,6 @@ This script computes **adjacent peak distance distributions** (50–1000 bp) fro
 - a **sweep of percentiles**
 - a **target number of peaks**
 
-A key performance feature is that the script **loads peaks and chromatin-state labels once**, then reuses them across many threshold runs (no re-reading BED files per percentile).
-
 ---
 
 ## What the script does
