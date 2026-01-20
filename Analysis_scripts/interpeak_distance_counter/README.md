@@ -153,8 +153,6 @@ Output filename convention:
 - if no chromatin state file is used:
   - `peaks_whole_genome_nuc_dis.txt`
 
-> **Note:** Single-percentile mode intentionally keeps the older naming convention (does **not** embed `scorepct` in the output file name).
-
 ---
 
 ### B) Percentile sweep mode
