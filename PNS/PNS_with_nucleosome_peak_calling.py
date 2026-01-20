@@ -628,7 +628,6 @@ def main():
     parser.add_argument('--frag-lower', type=int, default=127, help='Lower fragment length to include')
     parser.add_argument('--frag-upper', type=int, default=207, help='Upper fragment length to include')
     parser.add_argument('--max-duplicates', type=int, default=1, help='Max allowed duplicate fragments with same coords')
-    parser.add_argument('--no_plot', action='store_true', help='Disable plotting (currently unused)')
     parser.add_argument('--subsample', type=float, default=None,
         help='Subsampling proportion (e.g., 0.5 to subsample 50%% of the reads)')
 
