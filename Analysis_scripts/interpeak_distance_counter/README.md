@@ -1,10 +1,16 @@
 # interpeak_distance_counter.py
 
-This script computes **adjacent peak distance distributions** from a BED-like peak file, optionally stratified by **chromatin state**, while supporting score thresholding by:
+This script computes **adjacent peak distance distributions** from a BED-like peak file, optionally stratified
+by **chromatin state**, while supporting score thresholding by:
 
 - a **single percentile**
 - a **sweep of percentiles**
 - a **target number of peaks**
+
+It also supports configurable inter-peak distance bounds via:
+
+- `--min-distance` (default: 50 bp)
+- `--max-distance` (default: 1000 bp)
 
 ---
 
@@ -14,10 +20,11 @@ Given a set of genomic peaks:
 
 1. Loads all peaks from an input BED-like file.
 2. Optionally assigns each peak a chromatin state using an interval overlap query against a chromatin-state BED file.
-3. Filters peaks based on a score threshold (percentile or target peaks).
+3. Filters peaks based on a score threshold (percentile, sweep, or target peaks).
 4. For each chromosome:
    - scans **adjacent kept peaks**
    - counts the distance **only if both peaks share the same chromatin state label**
+   - counts distances only if `min_distance <= distance <= max_distance`
 5. Writes a `*_nuc_dis.txt` report containing:
    - raw counts
    - smoothed counts
@@ -148,9 +155,11 @@ Command:
 
 Output filename convention:
 
-- `peaks__scorepct<threshold>_nuc_dis.txt`
+- `<peakfile>_<statefile>_scorepct<P>_nuc_dis.txt`
 - if no chromatin state file is used:
-  - `peaks_whole_genome_nuc_dis.txt`
+  - `<peakfile>_whole_genome_scorepct<P>_nuc_dis.txt`
+
+> Note: `P` is the percentile **requested**, not the score threshold value.
 
 ---
 
@@ -224,6 +233,32 @@ Example:
 
 ---
 
+## Distance bounds (NEW)
+
+By default the script counts distances only in:
+
+- 50–1000 bp
+
+You can change this using:
+
+- `--min-distance <int>`
+- `--max-distance <int>`
+
+Example (restrict to 120–250 bp):
+
+```bash
+./script.py peaks.bed states.bed \
+  --score-percentile 10 \
+  --min-distance 120 --max-distance 250
+```
+
+Validation rules:
+
+- both must be `>= 0`
+- `--max-distance` must be `>= --min-distance`
+
+---
+
 ## Distance counting rules (critical)
 
 Distances are computed per chromosome from peaks sorted by position, but only **kept peaks** (passing the score threshold) are considered.
@@ -243,17 +278,22 @@ Therefore, this measures **within-state adjacent spacing**, not generic adjacent
 
 The output file contains multiple sections.
 
-### 1) Header line
+### 1) Header lines
 
-Includes:
+Includes score-filtering metadata:
 
 - score column used
 - requested percentile
-- target peaks
+- target peaks (if any)
 - effective percentile
 - chosen threshold
 - usable scored lines
 - total scanned lines
+
+And distance-filtering metadata:
+
+- `min_distance`
+- `max_distance`
 
 ---
 
@@ -342,7 +382,7 @@ Example: score in column 5 (0-based index 4), peak position in column 7 (0-based
 
 ---
 
-## Notes
+## Notes / gotchas
 
 - `--score-column` and `--position-column` are **0-based indices**
 - Chromosome naming must match between peak file and chromatin state file:
