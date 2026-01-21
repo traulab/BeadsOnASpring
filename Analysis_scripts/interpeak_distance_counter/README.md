@@ -371,24 +371,13 @@ Lists peak positions that occur more than once among kept peaks:
 
 ---
 
-### Score and position are in custom columns
+### Setting score and position columns
 
-Example: score in column 5 (0-based index 4), peak position in column 7 (0-based index 6)
+Example: score in column 5, peak position in column 7
 
 ```bash
 ./script.py peaks.bed states.bed \
-  --score-column 4 --position-column 6 --score-percentile 10
+  --score-column 5 --position-column 7 --score-percentile 10
 ```
 
 ---
-
-## Notes / gotchas
-
-- `--score-column` and `--position-column` are **0-based indices**
-- Chromosome naming must match between peak file and chromatin state file:
-  - `chr1` vs `1` mismatches will cause no overlaps
-- If chromatin-state intervals overlap heavily, you may get many multi-state labels like:
-  - `1_TssA|2_TssFlnk`, which are treated as distinct labels
-- Smoothing:
-  - mode is chosen from smoothed **counts**
-  - median/mean are computed from raw counts
