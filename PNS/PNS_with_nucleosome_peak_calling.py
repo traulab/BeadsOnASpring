@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-@author Andrew D Johnston
-
 Fragmentomics scoring + peak calling pipeline.
 
 What this script does (high level):
@@ -27,7 +25,6 @@ import pysam
 import numpy as np
 import os
 from scipy.signal import savgol_filter
-import matplotlib.pyplot as plt
 from collections import defaultdict
 import random
 
@@ -620,6 +617,52 @@ def call_and_write_peaks(
     )
 
 
+def require_bam_indexes(bam_paths, parser=None):
+    """
+    Ensure each BAM has an accompanying BAI index in the same directory.
+    Exits with an error if any index is missing.
+
+    Accepts either:
+      - <bam>.bai
+      - <bam_basename>.bai   (e.g. sample.bai for sample.bam)
+
+    Args:
+        bam_paths (list[str]): BAM file paths.
+        parser (argparse.ArgumentParser | None): If provided, uses parser.error()
+            for consistent CLI error formatting; otherwise raises FileNotFoundError.
+    """
+    missing = []
+
+    for bam in bam_paths:
+        bam = os.path.abspath(bam)
+        bam_dir = os.path.dirname(bam)
+
+        # Two common index naming conventions
+        idx1 = bam + ".bai"  # e.g. sample.bam.bai
+        idx2 = os.path.join(bam_dir, os.path.splitext(os.path.basename(bam))[0] + ".bai")  # e.g. sample.bai
+
+        if not (os.path.exists(idx1) or os.path.exists(idx2)):
+            missing.append((bam, idx1, idx2))
+
+    if missing:
+        msg_lines = ["ERROR: Missing BAM index (.bai) for the following BAM file(s).",
+                     "Each BAM input must have its .bai index in the SAME directory as the BAM:",
+                     ""]
+        for bam, idx1, idx2 in missing:
+            msg_lines.append(f"  BAM: {bam}")
+            msg_lines.append(f"    expected: {idx1}")
+            msg_lines.append(f"         or : {idx2}")
+            msg_lines.append("")
+        msg_lines.append("Create indexes with:")
+        msg_lines.append("  samtools index <file.bam>")
+        msg = "\n".join(msg_lines)
+
+        if parser is not None:
+            parser.error(msg)
+        else:
+            raise FileNotFoundError(msg)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Score fragmentomics data.")
     parser.add_argument('-b', '--bamfiles', nargs='+', help='BAM file(s) to process')
@@ -634,6 +677,8 @@ def main():
         help='Subsampling proportion (e.g., 0.5 to subsample 50%% of the reads)')
 
     args = parser.parse_args()
+
+    require_bam_indexes(args.bamfiles, parser=parser)
 
     # Default output prefix: join BAM basenames, optionally append contig if single contig
     if not args.out_prefix:
