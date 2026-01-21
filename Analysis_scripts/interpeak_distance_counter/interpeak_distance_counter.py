@@ -12,8 +12,8 @@ Input peak file (BED-like):
 - Requires at least: chrom, start, end
 - Uses either:
     * midpoint of (start,end) as peak position (default), OR
-    * a user-specified 0-based column as the position
-- Uses a user-specified 0-based column as the score for filtering
+    * a user-specified column as the position
+- Uses a user-specified column as the score for filtering
 
 Chromatin state file (optional; BED-like):
 - Requires at least: chrom, start, end, state_label
@@ -461,7 +461,7 @@ def write_output_txt(
     """
     with open(output_file, "w") as outfile:
         outfile.write(
-            f"# Score filtering: score_column={score_column}, "
+            f"# Score filtering: score_column={score_column + 1}, "
             f"requested_percentile={requested_percentile:.2f}, "
             f"target_peaks={target_peaks}, effective_percentile={eff_percentile:.2f}, "
             f"threshold={threshold:.6g}, scored_lines={n_used}, total_lines_scanned={n_lines}\n"
@@ -631,13 +631,13 @@ if __name__ == "__main__":
         "--position-column",
         type=int,
         default=None,
-        help="0-based column index to use directly as the position. If not set, uses midpoint of start/end.",
+        help="Column number to use directly as the position. If not set, uses midpoint of start/end.",
     )
     parser.add_argument(
         "--score-column",
         type=int,
-        default=3,
-        help="0-based column index to use as the score for filtering. Default 3 (4th column).",
+        default=4,
+        help="Column number to use as the score for filtering. Default 4.",
     )
 
     # NEW: distance bounds
@@ -665,6 +665,18 @@ if __name__ == "__main__":
     parser.add_argument("--pct-step", type=float, default=1.0, help="Step size for --pct-range (default 1).")
 
     args = parser.parse_args()
+
+    # Convert user-facing 1-based column numbers to internal 0-based indices
+    if args.position_column is not None:
+        if args.position_column <= 0:
+            print("[ERROR] --position-column must be >= 1", file=sys.stderr)
+            sys.exit(2)
+        args.position_column -= 1
+
+    if args.score_column is None or args.score_column <= 0:
+        print("[ERROR] --score-column must be >= 1", file=sys.stderr)
+        sys.exit(2)
+    args.score_column -= 1
 
     # Basic validation for distance bounds
     if args.min_distance < 0 or args.max_distance < 0:
