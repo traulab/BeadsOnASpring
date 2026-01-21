@@ -45,6 +45,7 @@ The pipeline (high level):
    - `*_nucleosome_regions.bed` (positive peak regions and metrics)
    - `*_breakpoint_peaks.bed` (negative peak regions and metrics)
 
+![PNS Example](IGV_PNS_example.png)
 ---
 
 ## Requirements
