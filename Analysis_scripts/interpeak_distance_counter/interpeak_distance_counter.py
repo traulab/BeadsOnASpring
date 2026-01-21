@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+@author Andrew D Johnston
+
 Compute adjacent-peak distance distributions (50–1000 bp) optionally stratified
 by chromatin state, while supporting score-thresholding by percentile or by a
 target number of peaks.
