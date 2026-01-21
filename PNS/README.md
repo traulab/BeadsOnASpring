@@ -11,7 +11,7 @@ Tools for fragmentomics scoring and peak calling from paired-end BAM files. The 
 
 - [Overview](#overview)
 - [Requirements](#requirements)
-- [Concept: PNS-like scoring](#concept-pns-like-scoring)
+- [Concept: PNS scoring](#concept-PNS-scoring)
 - [Script usage](#script-usage)
   - [Basic examples](#basic-examples)
   - [Arguments](#arguments)
@@ -33,7 +33,7 @@ The pipeline (high level):
 2. Filters duplicates by fragment coordinates to **max N duplicates** (`--max-duplicates`).
 3. Optionally subsamples fragments (`--subsample`).
 4. For each fragment whose length is within `[--frag-lower, --frag-upper]`:
-   - Adds a **precomputed, length-specific PNS-like kernel** across the fragment footprint.
+   - Adds a **precomputed, length-specific PNS kernel** across the fragment footprint.
    - Builds a **coverage** track (+1 for each covered base).
    - Builds a **dyad** track (+1 at fragment center).
 5. Smooths the PNS track using **Savitzky–Golay** (window=21, polyorder=2).
@@ -69,9 +69,9 @@ The pipeline (high level):
 
 ---
 
-## Concept: PNS-like scoring
+## Concept: PNS scoring
 
-The script implements a **PNS-like scoring** approach:
+The script implements a **PNS scoring** approach:
 
 - For each fragment length in `[frag_lower, frag_upper]`, a **kernel** is precomputed.
 - The kernel is formed by:
