@@ -1,6 +1,6 @@
 # interpeak_distance_counter.py
 
-This script computes **adjacent peak distance distributions** (50–1000 bp) from a BED-like peak file, optionally stratified by **chromatin state**, while supporting score thresholding by:
+This script computes **adjacent peak distance distributions** from a BED-like peak file, optionally stratified by **chromatin state**, while supporting score thresholding by:
 
 - a **single percentile**
 - a **sweep of percentiles**
@@ -18,7 +18,6 @@ Given a set of genomic peaks:
 4. For each chromosome:
    - scans **adjacent kept peaks**
    - counts the distance **only if both peaks share the same chromatin state label**
-   - only records distances in **50–1000 bp**
 5. Writes a `*_nuc_dis.txt` report containing:
    - raw counts
    - smoothed counts
@@ -91,8 +90,8 @@ Minimum required columns:
 Example chromatin state lines:
 
 ```
-chr1  0     10000  1_TssA
-chr1  10000 20000  13_Het
+chr1  0     10000  13_Het
+chr1  10000 20000  1_Active_Promoter
 ```
 
 If you omit this file, peaks are labeled as a single state: `All`.
@@ -149,7 +148,7 @@ Command:
 
 Output filename convention:
 
-- `peaks_<statefilebase>_nuc_dis.txt`
+- `peaks__scorepct<threshold>_nuc_dis.txt`
 - if no chromatin state file is used:
   - `peaks_whole_genome_nuc_dis.txt`
 
@@ -234,7 +233,7 @@ A distance is counted only when:
 1. Both peaks are kept (`score >= threshold`)
 2. They are **adjacent among kept peaks**
 3. They have **exactly the same** `state_label`
-4. Distance satisfies: `50 <= distance <= 1000`
+4. Distance satisfies: `min_distance <= distance <= max_distance`
 
 Therefore, this measures **within-state adjacent spacing**, not generic adjacent spacing.
 
@@ -343,7 +342,7 @@ Example: score in column 5 (0-based index 4), peak position in column 7 (0-based
 
 ---
 
-## Notes / gotchas
+## Notes
 
 - `--score-column` and `--position-column` are **0-based indices**
 - Chromosome naming must match between peak file and chromatin state file:
