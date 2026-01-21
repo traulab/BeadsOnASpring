@@ -155,10 +155,3 @@ Reads are paired **within each chunk only**. If mates fall into different chunks
 
 ### Interval assumptions
 Assignment uses a linear scan (`state_idx`) across sorted intervals. For correctness, per-chromosome BED intervals should be **sorted** and ideally **non-overlapping**.
-
-### Assignment coordinate
-Assignment is based on the **fragment midpoint**.
-Choose this versus start/end assignment based on what best matches your biological question.
-
-## License
-Add your preferred license here.
