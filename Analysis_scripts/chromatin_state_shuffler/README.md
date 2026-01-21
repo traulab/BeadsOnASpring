@@ -10,7 +10,7 @@ It writes a new BED file where shuffled segments are placed at candidate “anch
 
 ---
 
-## What it does (high level)
+## What it does
 
 For each chromosome:
 
