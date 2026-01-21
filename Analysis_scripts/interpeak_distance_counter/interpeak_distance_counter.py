@@ -313,13 +313,13 @@ def load_peaks(
 # ----------------------------
 # Compute distances for a given threshold
 # ----------------------------
-def compute_distances_for_threshold(peaks_by_chrom, threshold: float):
+def compute_distances_for_threshold(peaks_by_chrom, threshold: float, min_distance: int, max_distance: int):
     """
     For each chromosome, iterate peaks in positional order and keep only those with score >= threshold.
 
     Distance counting rule:
     - Only counts distances between *adjacent kept peaks* that share the same state label.
-    - Only records distances in [50, 1000] bp.
+    - Only records distances in [min_distance, max_distance] bp.
 
     Outputs:
       chrom_distances[chrom][state][distance] += 1
@@ -329,6 +329,11 @@ def compute_distances_for_threshold(peaks_by_chrom, threshold: float):
 
     Also reports duplicate peak positions (same chrom+pos among kept peaks).
     """
+    if min_distance < 0 or max_distance < 0:
+        raise ValueError("--min-distance and --max-distance must be >= 0")
+    if max_distance < min_distance:
+        raise ValueError("--max-distance must be >= --min-distance")
+
     chrom_distances = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     chrom_all_distances = defaultdict(lambda: defaultdict(int))
     genome_distances = defaultdict(lambda: defaultdict(int))
@@ -357,7 +362,7 @@ def compute_distances_for_threshold(peaks_by_chrom, threshold: float):
             # Only count distances between adjacent kept peaks with the SAME state label
             if prev_pos is not None and prev_pos != pos and prev_state == state:
                 d = abs(pos - prev_pos)
-                if 50 <= d <= 1000:
+                if min_distance <= d <= max_distance:
                     chrom_distances[chrom][state][d] += 1
                     chrom_all_distances[chrom][d] += 1
                     genome_distances[state][d] += 1
@@ -438,6 +443,8 @@ def write_output_txt(
     threshold: float,
     n_used: int,
     n_lines: int,
+    min_distance: int,
+    max_distance: int,
     chrom_distances,
     chrom_all_distances,
     genome_distances,
@@ -459,6 +466,7 @@ def write_output_txt(
             f"target_peaks={target_peaks}, effective_percentile={eff_percentile:.2f}, "
             f"threshold={threshold:.6g}, scored_lines={n_used}, total_lines_scanned={n_lines}\n"
         )
+        outfile.write(f"# Distance filter: min_distance={min_distance}, max_distance={max_distance}\n")
 
         # Chromosome Distances by Chromatin State
         outfile.write("Chromosome Distances by Chromatin State:\n")
@@ -632,6 +640,20 @@ if __name__ == "__main__":
         help="0-based column index to use as the score for filtering. Default 3 (4th column).",
     )
 
+    # NEW: distance bounds
+    parser.add_argument(
+        "--min-distance",
+        type=int,
+        default=50,
+        help="Minimum adjacent-peak distance (bp) to include. Default 50.",
+    )
+    parser.add_argument(
+        "--max-distance",
+        type=int,
+        default=10000,
+        help="Maximum adjacent-peak distance (bp) to include. Default 10000.",
+    )
+
     # Percentile sweep options
     parser.add_argument(
         "--pct-range",
@@ -643,6 +665,14 @@ if __name__ == "__main__":
     parser.add_argument("--pct-step", type=float, default=1.0, help="Step size for --pct-range (default 1).")
 
     args = parser.parse_args()
+
+    # Basic validation for distance bounds
+    if args.min_distance < 0 or args.max_distance < 0:
+        print("[ERROR] --min-distance and --max-distance must be >= 0", file=sys.stderr)
+        sys.exit(2)
+    if args.max_distance < args.min_distance:
+        print("[ERROR] --max-distance must be >= --min-distance", file=sys.stderr)
+        sys.exit(2)
 
     # Build chromatin trees (optional)
     if args.chromatin_state is not None:
@@ -695,7 +725,7 @@ if __name__ == "__main__":
             genome_all_distances,
             duplicate_positions,
             kept_count,
-        ) = compute_distances_for_threshold(peaks_by_chrom, thr)
+        ) = compute_distances_for_threshold(peaks_by_chrom, thr, args.min_distance, args.max_distance)
 
         print(f"[INFO] threshold={thr:.6g} kept={kept_count}/{n_used}", file=sys.stderr)
 
@@ -713,6 +743,8 @@ if __name__ == "__main__":
             threshold=thr,
             n_used=n_used,
             n_lines=n_lines,
+            min_distance=args.min_distance,
+            max_distance=args.max_distance,
             chrom_distances=chrom_distances,
             chrom_all_distances=chrom_all_distances,
             genome_distances=genome_distances,
@@ -751,7 +783,7 @@ if __name__ == "__main__":
                 genome_all_distances,
                 duplicate_positions,
                 kept_count,
-            ) = compute_distances_for_threshold(peaks_by_chrom, thr)
+            ) = compute_distances_for_threshold(peaks_by_chrom, thr, args.min_distance, args.max_distance)
 
             print(f"[INFO] pct={p:.2f} threshold={thr:.6g} kept={kept_count}/{n_used}", file=sys.stderr)
 
@@ -769,6 +801,8 @@ if __name__ == "__main__":
                 threshold=thr,
                 n_used=n_used,
                 n_lines=n_lines,
+                min_distance=args.min_distance,
+                max_distance=args.max_distance,
                 chrom_distances=chrom_distances,
                 chrom_all_distances=chrom_all_distances,
                 genome_distances=genome_distances,
@@ -791,7 +825,7 @@ if __name__ == "__main__":
             genome_all_distances,
             duplicate_positions,
             kept_count,
-        ) = compute_distances_for_threshold(peaks_by_chrom, thr)
+        ) = compute_distances_for_threshold(peaks_by_chrom, thr, args.min_distance, args.max_distance)
 
         print(f"[INFO] pct={effp:.2f} threshold={thr:.6g} kept={kept_count}/{n_used}", file=sys.stderr)
 
@@ -809,6 +843,8 @@ if __name__ == "__main__":
             threshold=thr,
             n_used=n_used,
             n_lines=n_lines,
+            min_distance=args.min_distance,
+            max_distance=args.max_distance,
             chrom_distances=chrom_distances,
             chrom_all_distances=chrom_all_distances,
             genome_distances=genome_distances,
