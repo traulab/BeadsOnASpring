@@ -304,29 +304,68 @@ bedToBigBed <prefix>_breakpoint_peaks.bed6 chrom.sizes <prefix>_breakpoint_peaks
 
 ## Conda / Mamba environment setup
 
-If you already use mamba/conda (recommended), install dependencies like:
+1. Installing Conda  
+First, download and install Miniconda. Use the following commands to download the installer and run it:
 
 ```bash
-mamba create -n PNS_env -c conda-forge \
-  python=3.11 numpy scipy pysam tqdm matplotlib
+# Download the Miniconda installer
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+
+# Run the installer
+bash Miniconda3-latest-Linux-x86_64.sh
+
+# Follow the instructions to complete the installation and initialize Miniconda
+
+# Once the installation is complete, activate the changes to your shell
+source ~/.bashrc
+```
+
+2. Installing Mamba via Conda  
+Mamba is a fast, efficient package manager that enhances Conda's functionality. It uses Conda as its underlying system but significantly speeds up package installation, dependency resolution, and environment creation.
+
+Install Mamba using the following Conda command:
+
+```bash
+# Install mamba in the base environment
+conda install mamba -n base -c conda-forge
+```
+
+3. Creating the PNS Environment  
+Once Mamba is installed, you can create a new environment using the `PNS_with_dependencies.yaml` file, which contains all the necessary dependencies for this project.
+
+```bash
+# Create the PNS environment from the YAML file
+mamba env create -f PNS_with_dependencies.yaml
+```
+
+4. Activating the PNS Environment  
+After creating the environment, activate it with the following command:
+
+```bash
+# Activate the PNS environment
 conda activate PNS_env
 ```
 
-Verify:
+5. Verify Installation  
+To verify that all dependencies are installed correctly, you can list all the installed packages in the PNS environment:
+
 ```bash
-python3 -c "import numpy, scipy, pysam; print('ok')"
+conda list
 ```
 
-Deactivate:
+This will display all the packages and their versions in your environment.
+
+6. Deactivating the Environment  
+When you are done working, you can deactivate the environment by running:
+
 ```bash
 conda deactivate
 ```
 
----
 
 ### Notes / gotchas
 
-- Input BAMs should be indexed (`.bai`) for region fetch efficiency.
+- Input BAMs must be indexed: each BAM requires a corresponding .bai index file in the same directory as the BAM.
 - Coordinates in `-c contig:start-end` are interpreted as **0-based** with **end-exclusive** semantics (standard BED-like).
 - Duplicate filtering is based on:
   ```
