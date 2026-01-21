@@ -176,7 +176,7 @@ After creating the environment, activate it with the following command:
 
 ```bash
 # Activate the PNS environment
-conda activate PNS
+conda activate PNS_env
 ```
 
 ### 5. Verify Installation
