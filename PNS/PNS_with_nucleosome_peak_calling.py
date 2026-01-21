@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """
+@author Andrew D Johnston 
+@author Fiach Antaw
+
 Fragmentomics scoring + peak calling pipeline.
 
 What this script does (high level):
