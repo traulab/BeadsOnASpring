@@ -57,9 +57,6 @@ The pipeline (high level):
 - `scipy`
 - `pysam`
 - `tqdm`
-- `matplotlib` *(imported; not required for core output writing but kept for downstream/legacy plotting)*
-
-> Note: the current script **does not require** `pandas` or `pyBigWig`.
 
 ### Additional tools (optional but recommended)
 - `samtools` (inspecting BAMs, indexing, etc.)
