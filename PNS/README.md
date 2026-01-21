@@ -1,6 +1,6 @@
 # PNS with Nucleosome + Breakpoint Peak Calling
 
-Tools for fragmentomics scoring and peak calling from paired-end BAM files. The primary script computes a **PNS-like (Probabilistic Nucleosome Score)** track per base, plus coverage and dyad tracks, smooths the PNS signal, and calls:
+Tools for fragmentomics scoring and peak calling from paired-end BAM files. The primary script computes a **PNS (Probabilistic Nucleosome Score)** track per base, plus coverage and dyad tracks, smooths the PNS signal, and calls:
 
 - **Positive peaks** → **nucleosome regions**
 - **Negative peaks (troughs)** → **breakpoint peaks** (called by flipping the sign and re-using the same peak caller)
