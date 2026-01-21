@@ -58,7 +58,7 @@ python3 PNS_with_nucleosome_peak_calling.py -b <your_bam_file.bam> -c <chromosom
 
 ### 2. Output Files
 
-#### a. Combined Scores (`bedGraph`) File Format
+#### a. Combined Scores (`bedGraph-like`) File Format
 
 This file contains the scores for each contig and is formatted as follows:
 
