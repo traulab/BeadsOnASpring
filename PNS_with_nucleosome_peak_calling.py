@@ -33,7 +33,7 @@ import random
 
 
 def generate_paired_reads(bamfile, contig=None, start=None, end=None,
-                          max_duplicates=1, subsample=None):
+                          max_duplicates=0, subsample=None):
     """
     Iterate over reads in a BAM region and yield properly paired reads as (fwd, rev).
 
@@ -90,7 +90,7 @@ def generate_paired_reads(bamfile, contig=None, start=None, end=None,
         )
 
         # Enforce max_duplicates: allow only N fragments with identical coords
-        if fragment_counts[fragment_key] >= max_duplicates:
+        if fragment_counts[fragment_key] > max_duplicates:
             continue
         fragment_counts[fragment_key] += 1
 
@@ -675,7 +675,7 @@ def main():
     parser.add_argument('--mode-length', type=int, default=167, help='Mode fragment length (used in kernel geometry)')
     parser.add_argument('--frag-lower', type=int, default=127, help='Lower fragment length to include')
     parser.add_argument('--frag-upper', type=int, default=207, help='Upper fragment length to include')
-    parser.add_argument('--max-duplicates', type=int, default=1, help='Max allowed duplicate fragments with same coords')
+    parser.add_argument('--max-duplicates', type=int, default=0, help='Max allowed duplicate fragments with same coords')
     parser.add_argument('--subsample', type=float, default=None,
         help='Subsampling proportion (e.g., 0.5 to subsample 50%% of the reads)')
 
@@ -688,7 +688,8 @@ def main():
         bam_basenames = [os.path.splitext(os.path.basename(bam))[0] for bam in args.bamfiles]
         args.out_prefix = f"{'_'.join(bam_basenames)}"
         if args.contigs and len(args.contigs) == 1:
-            args.out_prefix = f"{args.out_prefix}_{args.contigs[0]}"
+            safe_contig = args.contigs[0].replace(":", "_")
+            args.out_prefix = f"{args.out_prefix}_{safe_contig}"
 
     # Add mode and frag range to make outputs self-describing
     args.out_prefix = f"{args.out_prefix}_mode{args.mode_length}_lower{args.frag_lower}_upper{args.frag_upper}"
