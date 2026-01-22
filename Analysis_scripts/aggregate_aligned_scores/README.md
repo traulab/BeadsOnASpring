@@ -51,9 +51,9 @@ you can align to that column instead of midpoint:
 ```
 
 #### Change window size
-Window length is `2 * window_half` bases.
+Window length is `2 * window_half + 1` bases.
 
-Default: `--window-half 3001` → output length = `6002`
+Default: `--window-half 3000` → output length = `6001`
 
 ```bash
 ./extract_bigwig_windows.sh -w track.bw -a peaks.bed --window-half 2000
@@ -145,3 +145,4 @@ python3 aggregate_aligned_scores.py \
 
 - Coordinates extracted from BigWig use **0-based, half-open intervals**: `[start, end)`.
 - When strand is missing / not `+` or `-`, it is randomly assigned so that orientations remain balanced.
+
