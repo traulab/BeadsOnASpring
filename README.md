@@ -38,7 +38,7 @@ The pipeline (high level):
    - Builds a **dyad** track (+1 at fragment center).
 5. Smooths the PNS track using **Savitzky–Golay** (window=21, polyorder=2).
 6. Calls peaks/regions on the smoothed track:
-   - **positive regions + maxima** → nucleosome regions
+   - **positive regions** → nucleosome regions
    - **negative troughs** (by sign flip) → breakpoint peaks
 7. Writes:
    - `*_combined_scores.bedGraph` (multi-column per-base track)
