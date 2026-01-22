@@ -372,7 +372,7 @@ conda deactivate
 
 ---
 
-### Notes / gotchas
+### Notes
 
 - Input BAMs must be indexed: each BAM requires a corresponding `.bai` index file in the same directory as the BAM.
 - Coordinates in `-c contig:start-end` are interpreted as **0-based** with **end-exclusive** semantics (standard BED-like).
