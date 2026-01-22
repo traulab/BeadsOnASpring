@@ -11,7 +11,7 @@ Tools for fragmentomics scoring and peak calling from paired-end BAM files. The 
 
 - [Overview](#overview)
 - [Requirements](#requirements)
-- [Concept: PNS scoring](#concept-PNS-scoring)
+- [Concept: PNS scoring](#concept-pns-scoring)
 - [Script usage](#script-usage)
   - [Basic examples](#basic-examples)
   - [Arguments](#arguments)
@@ -46,6 +46,7 @@ The pipeline (high level):
    - `*_breakpoint_peaks.bed` (negative peak regions and metrics)
 
 ![PNS Example](IGV_PNS_example.png)
+
 ---
 
 ## Requirements
@@ -94,39 +95,34 @@ A dyad track (fragment center counts) is provided separately for conventional in
 
 #### Whole genome (all contigs in BAM header)
 ```bash
-python3 PNS_with_nucleosome_peak_calling.py \
-  -b sample1.bam
+python3 PNS_with_nucleosome_peak_calling.py   -b sample1.bam
 ```
 
 #### Restrict to one contig
 ```bash
-python3 PNS_with_nucleosome_peak_calling.py \
-  -b sample1.bam \
-  -c 2
+python3 PNS_with_nucleosome_peak_calling.py   -b sample1.bam   -c 2
 ```
 
 #### Restrict to a genomic interval
 Use `contig:start-end` (0-based coordinates; end is exclusive).
 ```bash
-python3 PNS_with_nucleosome_peak_calling.py \
-  -b sample1.bam \
-  -c 2:100000-200000
+python3 PNS_with_nucleosome_peak_calling.py   -b sample1.bam   -c 2:100000-200000
 ```
 
 #### Multiple BAMs
 Fragments are pooled across BAMs.
 ```bash
-python3 PNS_with_nucleosome_peak_calling.py \
-  -b sample1.bam sample2.bam \
-  -c 1
+python3 PNS_with_nucleosome_peak_calling.py   -b sample1.bam sample2.bam   -c 1
 ```
 
 #### Stronger duplicate filtering + subsampling
 ```bash
-python3 PNS_with_nucleosome_peak_calling.py \
-  -b sample1.bam \
-  --max-duplicates 1 \
-  --subsample 0.25
+python3 PNS_with_nucleosome_peak_calling.py   -b sample1.bam   --max-duplicates 1   --subsample 0.25
+```
+
+#### Control chunking / overlap (new)
+```bash
+python3 PNS_with_nucleosome_peak_calling.py   -b sample1.bam   -c 12:52621135-52641135   --chunk-bp 100000   --overlap-bp 1000
 ```
 
 ### Arguments
@@ -139,17 +135,28 @@ python3 PNS_with_nucleosome_peak_calling.py \
 | `--mode-length` | Mode fragment length used to define kernel geometry (default: 167) |
 | `--frag-lower` | Lower fragment length (inclusive) (default: 127) |
 | `--frag-upper` | Upper fragment length (inclusive) (default: 207) |
-| `--max-duplicates` | Maximum duplicated fragments allowed per identical coordinate tuple (default: 1) |
+| `--max-duplicates` | Maximum duplicated fragments allowed per identical coordinate tuple (default: 0) |
 | `--subsample` | Keep each fragment with probability `p` (e.g. `0.5`) |
+| `--chunk-bp` | Chunk size (bp) used to split long regions/contigs for scoring (default: 100000) |
+| `--overlap-bp` | Overlap padding (bp) added to *each side* of a chunk for edge-safe smoothing/peak calling (default: 1000) |
 
 ### How contigs / regions are processed
 
-To scale to whole-genome BAMs, the script processes data in sliding windows:
+To scale to whole-genome BAMs, the script processes data in windows:
 
-- Default window length: **100,000 bp**
-- Overlap padding: **1,000 bp** on both sides
+- Chunk length: `--chunk-bp` (default **100,000 bp**)
+- Overlap padding: `--overlap-bp` (default **1,000 bp** on both sides)
 
-For each window, scoring is computed on an **adjusted region** including overlap so smoothing + peak calling near window edges remain valid. Output writing then trims back to the **original non-overhang window**.
+For each chunk:
+
+1. Define the **core interval** (the part you ultimately keep):
+   - `[original_start, original_end)`
+
+2. Define the **scoring interval** (core + flanks for context):
+   - `[adjusted_start, adjusted_end) = [original_start - overlap, original_end + overlap)`  
+   clipped to chromosome bounds.
+
+Scoring, smoothing, and peak calling are performed on the **adjusted** interval. Output writing then trims results back to the **original** core interval so adjacent chunks do not double-report bases.
 
 ---
 
@@ -363,14 +370,14 @@ When you are done working, you can deactivate the environment by running:
 conda deactivate
 ```
 
+---
 
 ### Notes / gotchas
 
-- Input BAMs must be indexed: each BAM requires a corresponding .bai index file in the same directory as the BAM.
+- Input BAMs must be indexed: each BAM requires a corresponding `.bai` index file in the same directory as the BAM.
 - Coordinates in `-c contig:start-end` are interpreted as **0-based** with **end-exclusive** semantics (standard BED-like).
 - Duplicate filtering is based on:
   ```
   (chrom, fragment_start, fragment_end)
   ```
   and allowed up to `--max-duplicates`.
-
