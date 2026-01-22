@@ -518,28 +518,28 @@ def write_nucleosome_peaks(peaks, contigs, out_prefix,
                 )
 
 
-def split_into_regions(contig, start, end, max_length=100000, overlap=1000):
+def split_into_regions(contig, start, end, contig_len, max_length=100000, overlap=1000):
     """
-    Split a long contig interval into windows for memory/time efficiency.
+    Split [start,end) into chunks of size max_length, but score each chunk on an
+    expanded window [adjusted_start, adjusted_end) that includes 'overlap' padding
+    on both sides, clipped only to chromosome bounds.
 
-    Each region includes:
-      (contig,
-       adjusted_start, adjusted_end,   # includes 'overlap' padding on both sides
-       original_start, original_end)   # the "true" non-overhang window to keep outputs for
-
-    The overlap padding ensures that smoothing and peak-calling near edges of a window
-    still has context from neighboring bases; outputs are then trimmed back to original_*
-    in write_bedgraph and write_nucleosome_peaks.
+    Returns tuples:
+      (contig, adjusted_start, adjusted_end, original_start, original_end)
     """
     regions = []
     current_start = start
+
     while current_start < end:
-        adjusted_start = max(current_start - overlap, start - overlap, 0)
-        adjusted_end = min(current_start + max_length + overlap, end + overlap)
         original_start = current_start
         original_end = min(current_start + max_length, end)
+
+        adjusted_start = max(0, original_start - overlap)
+        adjusted_end = min(contig_len, original_end + overlap)
+
         regions.append((contig, adjusted_start, adjusted_end, original_start, original_end))
         current_start = original_end
+
     return regions
 
 
@@ -676,6 +676,8 @@ def main():
     parser.add_argument('--frag-lower', type=int, default=127, help='Lower fragment length to include')
     parser.add_argument('--frag-upper', type=int, default=207, help='Upper fragment length to include')
     parser.add_argument('--max-duplicates', type=int, default=0, help='Max allowed duplicate fragments with same coords')
+    parser.add_argument('--chunk-bp', type=int, default=100000, help='Chunk size for windowing')
+    parser.add_argument('--overlap-bp', type=int, default=1000, help='Overlap padding on each side of chunk')
     parser.add_argument('--subsample', type=float, default=None,
         help='Subsampling proportion (e.g., 0.5 to subsample 50%% of the reads)')
 
@@ -717,15 +719,30 @@ def main():
             if ':' in contig_range:
                 contig, positions = contig_range.split(':')
                 start, end = map(int, positions.split('-'))
-                contigs.extend(split_into_regions(contig, start, end))
+                contig_len = bamfiles[0].get_reference_length(contig)
+                contigs.extend(split_into_regions(
+                    contig, start, end, contig_len,
+                    max_length=args.chunk_bp,
+                    overlap=args.overlap_bp
+                ))
             else:
                 contig = contig_range
                 start, end = 0, bamfiles[0].get_reference_length(contig)
-                contigs.extend(split_into_regions(contig, start, end))
+                contig_len = bamfiles[0].get_reference_length(contig)
+                contigs.extend(split_into_regions(
+                    contig, start, end, contig_len,
+                    max_length=args.chunk_bp,
+                    overlap=args.overlap_bp
+                ))
     else:
         for contig in bamfiles[0].references:
             start, end = 0, bamfiles[0].get_reference_length(contig)
-            contigs.extend(split_into_regions(contig, start, end))
+            contig_len = bamfiles[0].get_reference_length(contig)
+            contigs.extend(split_into_regions(
+                contig, start, end, contig_len,
+                max_length=args.chunk_bp,
+                overlap=args.overlap_bp
+            ))
 
     # Precompute scoring kernels for each fragment length in [frag_lower, frag_upper]
     pns_frag_range = range(args.frag_lower, args.frag_upper + 1)
