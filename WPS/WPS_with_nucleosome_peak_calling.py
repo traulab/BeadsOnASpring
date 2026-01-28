@@ -2,7 +2,7 @@
 """
 @author Andrew D Johnston
 
-Kircher-style WPS scoring + median-centering + peak calling
+Kircher-style WPS scoring + median-centering + Kircher-closely-matched peak calling
 
 This script computes per-base tracks from paired-end BAM fragments:
   - coverage: fragment overlap depth (0-based, half-open)
@@ -14,29 +14,32 @@ This script computes per-base tracks from paired-end BAM fragments:
         sm_mWPS = wps_smoothed - rolling_median(wps)
     (i.e., smooth first, subtract the median of the RAW WPS window)
 
-Peak calling:
-  - Calls are made on sm_mWPS by default (Kircher smoother behavior).
-  - Breakpoints are called on -sm_mWPS.
-  - Positive runs are merged across gaps <= 5 bp, filling with zeros.
-  - Candidate merged regions are filtered by length and then refined using:
-      * median-threshold within the region
-      * selecting contiguous windows >= region median
-      * applying length and score cutoffs (Kircher-style)
+Peak calling (matched to Kircher 2015):
+  - Operates on a per-bp track (sm_mWPS by default).
+  - Builds positive runs where ivalue > 0, merging across gaps <= 5 bp (default),
+    filling gaps with zeros.
+  - For each merged run, applies Kircher evaluateValues logic:
+      * minlength <= L <= maxlength: choose the contiguous >= median window with max SUM
+      * maxlength <= L <= 3*maxlength: emit each contiguous >= median window
+        whose length is within [minlength, maxlength]
+      * otherwise: emit nothing
+  - Uses Kircher's median(values) behavior for region median-thresholding (upper-middle).
+  - Uses Kircher's continousWindows() behavior (including its "drop-first-after-gap").
+  - Uses 1-based internal ipos coordinates for calls, and outputs BED like Kircher:
+      chr{chrom}  (cstart-1)  cend  name=chrom:cstart-cend  score=cval  +  thickStart=cmiddle-1  thickEnd=cmiddle
+  - Midpoint uses "round-half-up" to emulate Kircher/Python2 rounding.
 
 Coordinate conventions:
-  - Internal arrays are indexed by 0-based genome coordinates.
-  - BED output uses 0-based start, end-exclusive.
-  - A +1 bp shift is applied to:
-      * BED start/end for calls
-      * the name field coordinates
-      * thickStart/thickEnd
-    to match observed Kircher-call coordinate behavior in practice.
+  - Internal scoring arrays are indexed by 0-based genome coordinates.
+  - Peak calling uses 1-based ipos to match Kircher’s output semantics.
+  - BED output is 0-based start, end-exclusive, matching Kircher’s printed columns.
 """
 
 import sys
 import argparse
 import os
 import random
+import math
 from collections import defaultdict
 
 import numpy as np
@@ -274,7 +277,7 @@ def score_contig(
 
             wps[arr_s:arr_e] += kernel[ker_s:ker_e].astype(np.float64)
 
-    # Smooth raw WPS (Kircher smoother analogue uses SG on raw WPS values)
+    # Smooth raw WPS (Kircher smoother uses a SG-like smoother on raw WPS values)
     if ref_len >= sg_window and sg_window % 2 == 1:
         wps_smoothed = savgol_filter(wps, sg_window, sg_order)
     else:
@@ -305,114 +308,126 @@ def score_contig(
 
 
 # ----------------------------
-# Kircher-style peak calling on a dense track
+# Kircher-matched peak calling
 # ----------------------------
-def _median(values):
-    a = np.asarray(values, dtype=float)
-    return float(np.median(a))
-
-
-def _continuous_windows(pos_val_pairs):
+def kircher_median(values):
     """
-    Given sorted (pos, val) pairs, return contiguous segments as:
-      (sum_vals, start_pos, end_pos, max_val)
-    where start/end are inclusive positions.
+    Match Kircher's median(values) (NOT numpy median):
+      helper.sort()
+      if round(lVal*0.5) == int(lVal*0.5): return helper[int(lVal*0.5)]
+      else: average of the two indexed values
+
+    For even length, this returns the UPPER middle element.
+    """
+    helper = list(values)
+    helper.sort()
+    lVal = len(helper)
+    point = 0.5
+    if round(lVal * point) == int(lVal * point):
+        return float(helper[int(lVal * point)])
+    else:
+        return float((helper[int(round(lVal * point))] + helper[int(lVal * point)]) * 0.5)
+
+
+def kircher_continous_windows(region_pairs):
+    """
+    Faithful to Kircher's continousWindows(region):
+    when a gap occurs, it appends the current window and RESETS state,
+    but does NOT start a new window with the current (pos,val) point.
     """
     res = []
-    cstart = None
-    cend = None
-    csum = 0.0
+    cstart, cend = None, None
     cmax = None
-
-    for pos, val in pos_val_pairs:
-        if cstart is None:
-            cstart = pos
+    csum = 0.0
+    for pos, val in region_pairs:
+        if cmax is None:
             cend = pos
-            csum = float(val)
-            cmax = float(val)
+            cstart = pos
+            cmax = val
+            csum = val
         else:
-            if pos == cend + 1:
+            if cend + 1 == pos:
                 cend = pos
-                csum += float(val)
-                if float(val) > cmax:
-                    cmax = float(val)
+                csum += val
+                if cmax < val:
+                    cmax = val
             else:
                 res.append((csum, cstart, cend, cmax))
-                cstart = pos
-                cend = pos
-                csum = float(val)
-                cmax = float(val)
-
-    if cstart is not None:
+                cstart, cend = None, None
+                cmax = None
+                csum = 0.0
+                # Intentionally do NOT initialize new window with (pos,val).
+    if cmax is not None:
         res.append((csum, cstart, cend, cmax))
     return res
 
 
-def _evaluate_region(chrom, run_start0, run_vals, minlength=50, maxlength=150, vari_cutoff=5.0):
-    """
-    Kircher evaluateValues behavior (operates on a merged positive region):
+def round_half_up(x):
+    """Emulate Python2-style rounding for .5 (round-half-up)."""
+    return int(math.floor(float(x) + 0.5))
 
-    If region length L is:
-      - minlength <= L <= maxlength:
-          choose the contiguous >=median window with maximum SUM; emit one call
-      - maxlength <= L <= 3*maxlength:
-          emit each contiguous >=median window whose window length is within [minlength, maxlength]
-      - otherwise:
-          emit nothing
 
-    Score reported is the maximum value (cval) in the chosen window, and must exceed vari_cutoff.
+def evaluate_values_kircher(chrom_nochr, start1, end1, values, report=True, minlength=50, maxlength=150, vari_cutoff=5.0):
     """
-    L = int(len(run_vals))
-    if L < minlength:
+    Closely match Kircher evaluateValues(chrom,start,end,values,report).
+
+    Inputs:
+      - chrom_nochr: "1","2",...,"X","Y"
+      - start1/end1: 1-based inclusive positions (ipos semantics)
+      - values: list of ivalue values aligned to positions start1..end1
+    Returns:
+      list of BED rows tuples:
+        (chrom_with_chr, bed_start0, bed_end0, name, score_int, "+", thickStart0, thickEnd0)
+    """
+    if start1 is None or end1 is None or not values:
         return []
 
-    vals = np.asarray(run_vals, dtype=float)
-    cmed = _median(vals)
-
-    pos0s = np.arange(run_start0, run_start0 + L, dtype=int)
-    keep = vals >= cmed
-    pairs = [(int(p), float(v)) for p, v in zip(pos0s[keep], vals[keep])]
-    if not pairs:
-        return []
-
-    windows = _continuous_windows(pairs)
+    L = len(values)
     calls = []
 
-    if minlength <= L <= maxlength:
-        windows.sort(key=lambda x: x[0])
-        _score_sum, cstart0, cend0, cmax = windows[-1]
-        if cmax > vari_cutoff:
-            cmiddle0 = int(round(cstart0 + (cend0 - cstart0) * 0.5))
-
-            # +1 bp shift to match observed Kircher-call coordinate behavior
-            bed_start = int(cstart0 + 1)
-            bed_end = int(cend0 + 1)  # end-exclusive on output
-            thick_start = int(cmiddle0 + 1)
-            thick_end = int(cmiddle0 + 2)
-            name = f"{chrom}:{cstart0+1}-{cend0+1}"
-
-            calls.append((bed_start, bed_end, name, int(round(cmax)), thick_start, thick_end))
+    if maxlength >= L >= minlength:
+        cMed = kircher_median(values)
+        region_pairs = [(pos, val) for pos, val in zip(range(start1, end1 + 1), values) if val >= cMed]
+        windows = kircher_continous_windows(region_pairs)
+        if not windows:
+            return []
+        windows.sort()
+        _score_sum, cstart, cend, cval = windows[-1]
+        if report and (cval > vari_cutoff):
+            cmiddle = cstart + round_half_up((cend - cstart) * 0.5)
+            chrom_out = f"chr{chrom_nochr}"
+            bed_start = cstart - 1
+            bed_end = cend
+            name = f"{chrom_nochr}:{cstart}-{cend}"
+            score_int = int(round(float(cval)))
+            thick_start = cmiddle - 1
+            thick_end = cmiddle
+            calls.append((chrom_out, bed_start, bed_end, name, score_int, "+", thick_start, thick_end))
         return calls
 
-    if maxlength <= L <= 3 * maxlength:
-        for _score_sum, cstart0, cend0, cmax in windows:
-            seg_len = int(cend0 - cstart0 + 1)
-            if minlength <= seg_len <= maxlength and cmax > vari_cutoff:
-                cmiddle0 = int(round(cstart0 + (cend0 - cstart0) * 0.5))
-
-                bed_start = int(cstart0 + 1)
-                bed_end = int(cend0 + 1)
-                thick_start = int(cmiddle0 + 1)
-                thick_end = int(cmiddle0 + 2)
-                name = f"{chrom}:{cstart0+1}-{cend0+1}"
-
-                calls.append((bed_start, bed_end, name, int(round(cmax)), thick_start, thick_end))
+    elif (3 * maxlength) >= L >= maxlength:
+        cMed = kircher_median(values)
+        region_pairs = [(pos, val) for pos, val in zip(range(start1, end1 + 1), values) if val >= cMed]
+        windows = kircher_continous_windows(region_pairs)
+        for _score_sum, cstart, cend, cval in windows:
+            seg_len = (cend - cstart + 1)
+            if maxlength >= seg_len >= minlength:
+                if report and (cval > vari_cutoff):
+                    cmiddle = cstart + round_half_up((cend - cstart) * 0.5)
+                    chrom_out = f"chr{chrom_nochr}"
+                    bed_start = cstart - 1
+                    bed_end = cend
+                    name = f"{chrom_nochr}:{cstart}-{cend}"
+                    score_int = int(round(float(cval)))
+                    thick_start = cmiddle - 1
+                    thick_end = cmiddle
+                    calls.append((chrom_out, bed_start, bed_end, name, score_int, "+", thick_start, thick_end))
         return calls
 
     return []
 
 
-def call_peaks_kircher_style(
+def call_peaks_kircher_matched(
     contig,
     adjusted_start0,
     track,
@@ -422,46 +437,64 @@ def call_peaks_kircher_style(
     vari_cutoff=5.0,
 ):
     """
-    Scan a dense per-bp track for values > 0.
-    Merge nearby positive segments if the gap is <= merge_gap_bp, filling the gap with zeros.
-    Evaluate each merged region using Kircher-style median thresholding and length filters.
-    """
-    chrom = contig if contig.startswith("chr") else f"chr{contig}"
-    chrom_short = chrom.replace("chr", "")
+    Kircher-matched positive-run builder + evaluateValues.
 
+    Uses ipos (1-based) positions:
+      ipos = adjusted_start0 + i + 1
+
+    Merge rule:
+      merge if ipos <= cend + merge_gap_bp  (step=1)
+      fill missing positions with zeros.
+    """
+    # Chrom name for filtering (Kircher uses "1".. "22","X","Y")
+    chrom_nochr = contig.replace("chr", "")
     allowed = {str(i) for i in range(1, 23)} | {"X", "Y"}
-    report = chrom_short in allowed
+    report = chrom_nochr in allowed
 
     calls = []
-    cstart0 = None
-    cend0 = None
+    cstart = None   # 1-based inclusive
+    cend = None     # 1-based inclusive
     clist = []
 
-    for i in range(int(track.size)):
-        v = float(track[i])
-        pos0 = int(adjusted_start0 + i)
+    n = int(track.size)
+    for i in range(n):
+        ivalue = float(track[i])
+        ipos = int(adjusted_start0 + i + 1)  # 1-based
 
-        if v > 0:
-            if cend0 is not None and pos0 <= (cend0 + merge_gap_bp):
-                while (cend0 + 1) < pos0:
-                    cend0 += 1
+        if ivalue > 0:
+            if (cend is not None) and (ipos <= (cend + merge_gap_bp)):
+                while (cend + 1) < ipos:
+                    cend += 1
                     clist.append(0.0)
-                clist.append(v)
-                cend0 = pos0
+                clist.append(ivalue)
+                cend = ipos
             else:
-                if cstart0 is not None and clist and report:
-                    calls.extend(_evaluate_region(chrom_short, cstart0, clist, minlength, maxlength, vari_cutoff))
-                cstart0 = pos0
-                cend0 = pos0
-                clist = [v]
+                if cstart is not None and clist and report:
+                    calls.extend(
+                        evaluate_values_kircher(
+                            chrom_nochr, cstart, cend, clist,
+                            report=report,
+                            minlength=minlength,
+                            maxlength=maxlength,
+                            vari_cutoff=vari_cutoff,
+                        )
+                    )
+                clist = [ivalue]
+                cstart = ipos
+                cend = ipos
 
-    if cstart0 is not None and clist and report:
-        calls.extend(_evaluate_region(chrom_short, cstart0, clist, minlength, maxlength, vari_cutoff))
+    if cstart is not None and clist and report:
+        calls.extend(
+            evaluate_values_kircher(
+                chrom_nochr, cstart, cend, clist,
+                report=report,
+                minlength=minlength,
+                maxlength=maxlength,
+                vari_cutoff=vari_cutoff,
+            )
+        )
 
-    bed_rows = []
-    for bed_start, bed_end, name, score_int, thick_start, thick_end in calls:
-        bed_rows.append((chrom, int(bed_start), int(bed_end), name, int(score_int), "+", int(thick_start), int(thick_end)))
-    return bed_rows
+    return calls
 
 
 # ----------------------------
@@ -528,7 +561,7 @@ def split_into_regions(contig, start, end, contig_len, max_length=100000, overla
 # Main
 # ----------------------------
 def main():
-    parser = argparse.ArgumentParser(description="Kircher-style WPS scoring + median-centering + peak calling.")
+    parser = argparse.ArgumentParser(description="Kircher-style WPS scoring + median-centering + Kircher-matched peak calling.")
     parser.add_argument("-b", "--bamfiles", nargs="+", required=True, help="BAM file(s) to process")
     parser.add_argument("-o", "--out_prefix", default=None, help="Output prefix")
     parser.add_argument(
@@ -577,47 +610,34 @@ def main():
 
     contigs = []
     if args.contigs:
-        for cr in args.contigs:
-            if ":" in cr:
-                contig, positions = cr.split(":")
-                s, e = map(int, positions.split("-"))
+        for contig_range in args.contigs:
+            if ':' in contig_range:
+                contig, positions = contig_range.split(':')
+                start, end = map(int, positions.split('-'))
                 contig_len = bamfiles[0].get_reference_length(contig)
-                contigs.extend(
-                    split_into_regions(
-                        contig, s, e, contig_len,
-                        max_length=args.chunk_bp,
-                        overlap=args.overlap_bp
-                    )
-                )
-
-            else:
-                contig = cr
-                s = 0
-                e = bamfiles[0].get_reference_length(contig)
-                contig, positions = cr.split(":")
-                s, e = map(int, positions.split("-"))
-                contig_len = bamfiles[0].get_reference_length(contig)
-                contigs.extend(
-                    split_into_regions(
-                        contig, s, e, contig_len,
-                        max_length=args.chunk_bp,
-                        overlap=args.overlap_bp
-                    )
-                )
-    else:
-        for contig in bamfiles[0].references:
-            s = 0
-            e = bamfiles[0].get_reference_length(contig)
-            contig, positions = cr.split(":")
-            s, e = map(int, positions.split("-"))
-            contig_len = bamfiles[0].get_reference_length(contig)
-            contigs.extend(
-                split_into_regions(
-                    contig, s, e, contig_len,
+                contigs.extend(split_into_regions(
+                    contig, start, end, contig_len,
                     max_length=args.chunk_bp,
                     overlap=args.overlap_bp
-                )
-            )
+                ))
+            else:
+                contig = contig_range
+                start, end = 0, bamfiles[0].get_reference_length(contig)
+                contig_len = bamfiles[0].get_reference_length(contig)
+                contigs.extend(split_into_regions(
+                    contig, start, end, contig_len,
+                    max_length=args.chunk_bp,
+                    overlap=args.overlap_bp
+                ))
+    else:
+        for contig in bamfiles[0].references:
+            start, end = 0, bamfiles[0].get_reference_length(contig)
+            contig_len = bamfiles[0].get_reference_length(contig)
+            contigs.extend(split_into_regions(
+                contig, start, end, contig_len,
+                max_length=args.chunk_bp,
+                overlap=args.overlap_bp
+            ))
 
     wps_frag_range = set(range(args.frag_lower, args.frag_upper + 1))
     distributions = precompute_distributions_kircher_exact(wps_frag_range, protection=args.protection)
@@ -648,10 +668,10 @@ def main():
         )
 
         # Kircher --smoother analogue:
-        #   ivalue = smoothed(raw WPS) - median(raw WPS window)
+        #   ivalue = smoother(WPS) - median(WPS window)
         track = scores["sm_mWPS"][0][2]
 
-        nuc_rows = call_peaks_kircher_style(
+        nuc_rows = call_peaks_kircher_matched(
             contig=contig,
             adjusted_start0=adjusted_start,
             track=track,
@@ -660,7 +680,7 @@ def main():
             maxlength=args.peak_maxlen,
             vari_cutoff=args.peak_varicutoff,
         )
-        brk_rows = call_peaks_kircher_style(
+        brk_rows = call_peaks_kircher_matched(
             contig=contig,
             adjusted_start0=adjusted_start,
             track=(-1.0 * track),
@@ -670,7 +690,7 @@ def main():
             vari_cutoff=args.peak_varicutoff,
         )
 
-        # Enforce maximum merged-region rejection when peak_maxregion != 3*peak_maxlen
+        # Enforce maximum merged-region rejection (Kircher uses 3*maxlength)
         if args.peak_maxregion != 3 * args.peak_maxlen:
             nuc_rows = [r for r in nuc_rows if (r[2] - r[1]) <= args.peak_maxregion]
             brk_rows = [r for r in brk_rows if (r[2] - r[1]) <= args.peak_maxregion]
@@ -679,6 +699,7 @@ def main():
         def keep_core(rows):
             out = []
             for chrom, s, e, name, score, strand, ts, te in rows:
+                # rows are BED: [s,e) 0-based
                 if e <= original_start or s >= original_end:
                     continue
                 out.append((chrom, s, e, name, score, strand, ts, te))
